@@ -1,0 +1,45 @@
+# StockPilot 0.3 SEC 集成说明
+
+## 目标与边界
+
+0.3 只把 SEC 官方公开申报与 Company Facts 接入股票详情页，用作可追溯的事实来源。价格、涨跌幅、市值、P/E、Forward P/E、研究评分、研究报告、Checklist、Paper Trading、Journal 和 Insights 仍分别来自 Sample provider 或用户本地数据，不能把 SEC 事实混入模拟价格或 Research Profile 计算。
+
+界面始终保留 `Demo analysis based on sample data. Not investment advice.`，SEC 面板也不产生买卖信号、价格预测或个性化建议。
+
+## 官方端点
+
+- ticker/CIK 映射：`https://www.sec.gov/files/company_tickers_exchange.json`
+- 公司身份与最近申报：`https://data.sec.gov/submissions/CIK##########.json`
+- XBRL Company Facts：`https://data.sec.gov/api/xbrl/companyfacts/CIK##########.json`
+
+当前五个白名单 ticker 的 CIK 已由官方映射核验并静态保存在 `app/providers/sec/tickerMap.ts`。静态映射只避免每次页面加载重复读取 mapping，不允许从 ticker 猜 CIK。
+
+## 服务端边界
+
+浏览器只请求 `/api/sec/snapshot/:ticker`、`/api/sec/company/:ticker` 或 `/api/sec/filings/:ticker`。SEC 请求只发生在 `app/providers/sec/client.ts` 的 server provider 中，客户端 bundle 不包含 `SEC_USER_AGENT` 或 SEC data URL。
+
+`FetchSecHttpClient` 的保护措施：
+
+1. 每次请求带真实联系信息的 `User-Agent`、`Accept: application/json` 和 `Accept-Encoding`。
+2. 缺少 `SEC_USER_AGENT` 时不发请求，返回 `not-configured` sample fallback。
+3. 内存滑动窗口限速，默认 5 req/s，配置被限制在 1–10 req/s。
+4. 10 秒超时、响应大小上限（默认 2 MB）、状态码和 JSON 解析保护。
+5. 429、5xx、timeout/network 最多重试 2 次；403 不重试；错误为 typed `SecProviderError`，route 不向用户泄露 stack。
+
+## 缓存和 fallback
+
+`MemorySecCache` 保存 `{ key, storedAt, expiresAt, source, value }`。快照默认 TTL 3600 秒；新鲜缓存标记 `cached`，过期但可用的快照标记 `stale-cache`。live 刷新失败时优先使用 stale cache，否则按错误类型返回 sample 数据并显示 `not-configured`、`rate-limited` 或 `unavailable` 状态。所有 fallback 都在 warnings 中解释原因。
+
+## 事实选择规则
+
+- Revenue 按 `RevenueFromContractWithCustomerExcludingAssessedTax`、`Revenues`、`SalesRevenueNet` 顺序回退。
+- Operating Income、Net Income、OCF 使用对应 us-gaap concept。
+- CapEx 使用合理的 PPE/productive assets payment concept，并以绝对值表示现金投入。
+- FCF 严格按同一年度 `OCF - CapEx` 推导，保留两条 provenance；缺一项就显示 Unavailable，不填 0。
+- 年度事实要求 10-K/10-K/A、FY 或足够长的 duration；10-Q 只作为最新事实，不进入年度五年表。
+- 同一期间按 accession/期间去重，修订申报使用最新 filed date；不同单位不混算。
+- 每项事实保留 taxonomy、concept、unit、form、filed、期间、fiscal year/period、accession 和 source URL。
+
+## 本地运行
+
+复制 `.env.example` 为本地 `.env.local`，填入真实的联系 User-Agent 才会启用 live SEC 请求；不配置时完整 Demo 仍可运行且不会访问 SEC。不要提交 `.env`、真实邮箱或任何密钥。

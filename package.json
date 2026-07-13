@@ -1,6 +1,6 @@
 {
   "name": "stockpilot-prototype",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -9,8 +9,8 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "vinext build && tsx --test tests/unit.test.ts && node --test tests/rendered-html.test.mjs",
-    "test:unit": "tsx --test tests/unit.test.ts",
+    "test": "vinext build && tsx --test tests/unit.test.ts tests/sec.test.ts && node --test tests/rendered-html.test.mjs",
+    "test:unit": "tsx --test tests/unit.test.ts tests/sec.test.ts",
     "typecheck": "tsc --noEmit --incremental false",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
@@ -39,13 +39,15 @@
     "tsx": "4.20.3",
     "typescript": "5.9.3",
     "vinext": "0.0.50",
-    "vite": "8.0.13",
+    "vite": "8.0.16",
     "wrangler": "4.92.0"
   },
   "overrides": {
     "next": {
       "postcss": "8.5.18"
-    }
+    },
+    "undici": "7.28.0",
+    "ws": "8.21.0"
   },
   "type": "module"
 }

@@ -1,35 +1,34 @@
 # StockPilot
 
-StockPilot 是一个面向美股新手的研究、买入检查、模拟交易和交易复盘 Web 应用。它帮助用户写下可验证的投资逻辑、控制风险并学习自己的决策过程；不连接真实券商，不执行真实订单，也不提供个性化投资建议。
+StockPilot 是面向美股新手的研究、买入检查、模拟交易和交易复盘 Web 应用。它帮助用户写下可验证的投资逻辑、检查风险并观察过程，不连接真实券商、不使用真实资金、不自动下单，也不提供个性化投资建议或价格预测。
 
-## 在线原型
+## 0.3 新增
 
-- 产品体验：<https://stockpilot-research-demo.yuxuan-wang-5747.chatgpt.site>
-- 当前版本默认显示中文，并支持 `中文 / EN` 和浅色/深色模式切换。
-- 原型中的价格、研究内容、交易和统计均为模拟数据，不构成投资建议。
+股票详情页现在有独立的 **SEC Source Facts** 面板：
 
-## 功能
+- 服务端读取 SEC 官方 submissions 和 XBRL Company Facts。
+- 身份、CIK、SIC、最新 10-K/10-Q/8-K、年度五年事实、filed/as-of 和原始来源链接均可追溯。
+- Revenue、Operating Income、Net Income、OCF、CapEx、FCF、Assets、Liabilities、Cash、Diluted EPS 逐项显示；缺失值为 `Unavailable`，不会填 0。
+- FCF 明确按同一年度 `Operating Cash Flow - Capital Expenditure` 计算并保留两条来源。
+- User-Agent、限速、超时、响应大小、schema、重试、TTL/stale cache 和安全 fallback 均在 server provider 中实现。
+- 没有 `SEC_USER_AGENT` 时不发 SEC 请求，仍完整运行 Sample Demo。
 
-- Dashboard：模拟组合价值、收益、持仓、自选股、最近活动和股票搜索。
-- Stock Detail：AAPL、MSFT、NVDA、AMZN、TSLA 的模拟价格、财务指标、趋势、研究评分和来源入口。
-- Research Report：Company Overview、How the Company Makes Money、Bull Case、Bear Case、Key Risks、Upcoming Catalysts、Valuation Summary、What Would Invalidate the Thesis、Questions Requiring Further Research。
-- Watchlist：目标关注价格、关注理由、Researching/Watching/Ready to Buy/Avoiding 状态。
-- Buy Checklist：九项买入前检查、Buy Readiness Score 和风险警告。
-- Paper Portfolio：模拟交易、成本、现值、未实现盈亏、收益率、组合权重与关闭交易。
-- Trade Journal：买卖原因、情绪、逻辑/过程判断、错误标签和经验。
-- Insights：胜率、平均盈亏、Profit Factor、策略、常见错误、持有期和仓位表现。
-- 中英文界面：默认中文，可在顶部使用 `中文 / EN` 切换；语言偏好保存在当前设备。
+SEC 面板与 Sample market、Research Profile、Paper Portfolio、Checklist、Journal 和 Insights 隔离；SEC facts 不影响模拟价格、评分或交易数量。
 
 ## 启动
 
-需要 Node.js 22.13+。
+需要 Node.js 22.13+。当前 Codex 运行时若没有全局 npm，可用等价的 `pnpm --ignore-workspace` 命令。
 
 ```bash
 npm install
 npm run dev
 ```
 
-然后访问终端显示的本地地址，通常是 <http://localhost:3000>。
+浏览器打开终端显示的地址，通常为 <http://localhost:3000>。
+
+## 启用 SEC live（可选）
+
+复制 `.env.example` 为本地 `.env.local`，把 `SEC_USER_AGENT` 改成真实且可联系的应用名/邮箱；可按需调整 `SEC_REQUESTS_PER_SECOND` 和 `SEC_CACHE_TTL_SECONDS`。不要提交 `.env`、真实邮箱、API key、数据库密码、`node_modules`、`.next` 或 `dist`。
 
 ## 验证
 
@@ -40,44 +39,32 @@ npm test
 npm run build
 ```
 
-`npm test` 会运行评分、风险、组合、存储校验、语言偏好和关键流程测试，并检查生产构建的 HTML 是否包含免责声明、Demo warning 与原始来源入口。
+`npm test` 使用完全离线 SEC fixtures，覆盖 CIK 映射、概念回退、年度/季度筛选、修订去重、单位、FCF、请求头、限速/重试、缓存/fallback、API schema，以及 0.2 ledger、Checklist、Journal、Insights 和 HTML 渲染回归。
 
-## 结构
+## 目录
 
 ```text
 app/
-  domain/       评分、组合计算、模型和格式化
-  providers/    MockMarketDataProvider / MockResearchProvider
-  storage/      Zod schema 与版本化 localStorage
-  stocks/       /stocks/[ticker] App Router 页面
-  checklist/    /checklist/[ticker] 页面
+  domain/       组合、评分、风险和 Insights 纯函数
+  providers/    Sample providers 与 server-only SEC provider
+  storage/      Zod 校验的 localStorage v2
+  api/sec/      SEC snapshot/company/filings route handlers
+  components/   SEC source facts panel
+  stocks/       /stocks/[ticker] 页面
   StockPilotApp.tsx 交互应用壳
-  data.ts       五只股票的演示 fixture
-tests/          unit、关键流程和 SSR HTML 测试
-memory-bank/    产品、技术和架构记忆
+tests/fixtures/sec/  离线 SEC 响应形状 fixture
+docs/             产品、架构、SEC 契约和路线图
+memory-bank/      项目进度与架构记忆
 ```
 
-## 架构决策
+## 主要文档
 
-1. V1 使用 MockMarketDataProvider 和 MockResearchProvider，保证没有 API Key 也能完整运行；未来可替换 Provider，不需要重做 UI。
-2. 用户行为数据使用带版本号的 localStorage，并在读取/写入时使用 Zod 校验；损坏数据会安全回退到 demo 初始值。
-3. Evidence Score、Buy Readiness Score、组合派生值和 Insights 聚合都是纯函数，方便单元测试与未来服务端复用。
-4. 当前原型保留一个共享应用壳，同时提供 App Router 深链接页面，降低迁移成本。
-5. 最近一年价格趋势使用 Recharts 渲染，并保留明确的模拟数据标签和文字说明。
+- `docs/SEC_INTEGRATION.md`：端点、服务端边界、缓存、限速、归一化规则。
+- `docs/SEC_DATA_CONTRACT.md`：snapshot schema、provenance、状态和数据分类。
+- `docs/ARCHITECTURE_V2.md`：0.2/0.3 分层与隔离原则。
+- `docs/ROADMAP.md`：版本范围和发布门槛。
+- `PRODUCT_SPEC.md`、`USER_FLOWS.md`、`UI_SPEC.md`、`DATA_MODEL.md`、`IMPLEMENTATION_PLAN.md`：产品与工程规格。
 
-## 模拟数据与限制
+## 免责声明
 
-- 五只股票价格、财务指标、研究报告、评分、走势、初始持仓、交易日志和统计均为模拟数据。
-- 没有实时新闻、SEC 抓取、外部数据库、用户注册、社交、支付、券商 API、真实订单、期权、加密货币或机器学习预测。
-- `.env.example` 只保留未来可选的服务端研究 Provider 变量；不要创建或提交真实 `.env`。
-
-## 产品与工程文档
-
-- `docs/`：Work 输出文档的项目副本，便于后续工程协作。
-- `PRODUCT_SPEC.md`
-- `USER_FLOWS.md`
-- `UI_SPEC.md`
-- `DATA_MODEL.md`
-- `IMPLEMENTATION_PLAN.md`
-
-金融免责声明：StockPilot is an educational research and paper-trading tool. It does not provide financial advice or execute real trades.
+StockPilot is an educational research and paper-trading tool. It does not provide financial advice, personalized recommendations, guaranteed returns, or real trade execution. SEC facts are public source evidence and do not constitute a buy or sell signal.

@@ -1,38 +1,25 @@
 # Progress
 
-## M0 — Interactive prototype
+## 0.2 — 已完成并作为 0.3 基线
 
-状态：工程化增量已完成并通过验收。
+- 模拟账户 ledger：买入扣现金、平仓返还现金、realized/unrealized P/L 分离、仓位比例、现金校验。
+- Checklist serious warning 阻止建仓；ticker checklist 草稿、trade journal、动态 Decision Queue/Insights。
+- 五家公司独立 Sample research report；Research Profile 核心分数不含 Momentum；localStorage v2 迁移与损坏恢复。
+- 英文界面、中文切换、light/dark、桌面/移动端响应式布局和 App Router 深链接。
 
-- [x] 建立 vinext / Cloudflare-compatible 项目。
-- [x] 完成 Dashboard、Stock Detail、Research Report、Watchlist、Buy Checklist、Paper Portfolio、Trade Journal、Insights 原型。
-- [x] 支持五只股票模拟数据、浅深主题、桌面与移动布局。
-- [x] 完成五份中文产品/工程文档。
-- [x] Production build 通过。
-- [x] TypeScript 类型检查通过。
-- [x] Rendered HTML tests 通过（2/2）。
-- [x] 已核对免责声明、Demo warning 与 SEC / 公司 IR source links。
-- [x] 增加 App Router 深链接、Zod localStorage 校验、Mock Provider 和 Recharts 依赖。
-- [x] 增加 7 个单元/关键流程测试；SSR 测试覆盖 root 和 `/stocks/NVDA`。
-- [x] lint、strict TypeScript、production build 通过。
-# 2026-07-13 — StockPilot 0.2 业务逻辑里程碑
+## 0.3 — SEC 集成状态
 
-- 完成模拟账户账本：买入扣现、卖出回现、已实现/未实现盈亏分离、现金校验和交易流水。
-- 完成 Checklist 准入、目标仓位换算整股、确认摘要和完整决策快照。
-- 完成 ticker 草稿隔离、受控 Journal、动态 Insights 和动态 Decision Queue。
-- Research Evidence Score 已替换为由样例指标计算的 Research Profile，Momentum 不进入核心总分。
-- 五家公司均有独立的九段模拟研究报告。
-- localStorage 升级到 v2，加入 v1 迁移和安全恢复。
-- 新增 Filing/User Provider 边界和研究 API Route Handler。
-- 移动端开放 Insights，并改善价格、Watchlist、Portfolio 和 Report 操作。
-- 验证命令：`pnpm --ignore-workspace run lint`、`pnpm --ignore-workspace test`、`pnpm --ignore-workspace run build`。
+- [x] 建立 `app/providers/sec/` server-only provider、类型与统一 snapshot contract。
+- [x] 官方五 ticker CIK allow-list、submissions/companyfacts URL 和 archive source URL。
+- [x] Zod 原始/最终响应校验；年度/季度识别、修订去重、单位优先级、缺失状态和 FCF provenance。
+- [x] Fetch client：User-Agent、Accept、gzip、rate limit（最大 10/s）、timeout、大小限制、429/5xx/timeout bounded retry。
+- [x] Memory TTL/stale cache、sample fallback、not-configured/rate-limited/unavailable/partial 状态。
+- [x] Stock detail 独立 SEC Source Facts panel、身份、10 个指标、五年文本表、最近 filings、warnings 和 source links。
+- [x] 离线 fixtures 和 SEC 单元测试，保留 0.2 回归测试。
+- [x] `.env.example`、README、SEC integration/data contract、architecture、roadmap 已同步。
+- [x] lint/typecheck/test/build 通过；`pnpm audit --audit-level high` 通过（仍有 1 个 moderate、1 个 low 的开发工具链 esbuild 提示）；browser smoke 和敏感文件审计通过。
+- [ ] 提交并推送 feature 分支。
 
-# 2026-07-13 — StockPilot 0.2 发布前审计
+## 可验证命令
 
-- 修复金额取整、重复平仓、非有限数值、账本交叉校验、损坏 v2 回退 v1、Provider 异常和 localStorage 写入失败反馈。
-- 修复保存语言偏好后的 hydration mismatch，并保留无 API Key 的完整 Demo 启动路径。
-- 补齐 Watchlist 表单标签、Checklist 风险播报区域、移动端品牌标签及关键中英文文案。
-- Insights 仅统计可分析的已结束交易及对应 Journal，不再让无关日志影响结果。
-- 增加独立 `typecheck` 命令；单元测试扩展至 32 项，覆盖账本、迁移、边界值、API 错误和完整 NVDA 流程。
-- 将 Next 间接依赖 PostCSS 固定到已修复版本；生产依赖审计为零已知漏洞。
-- 实际浏览器完成 Dashboard → NVDA → Checklist → 建仓 → 平仓 → Journal → Insights → Dashboard → 刷新持久化流程，并复验 760px、390px、中英文和浅深色模式。
+在 Codex 运行时使用：`pnpm --ignore-workspace run lint`、`pnpm --ignore-workspace run typecheck`、`pnpm --ignore-workspace test`、`pnpm --ignore-workspace run build`。SEC 常规测试不访问网络；启用 live 前必须在本地 `.env.local` 提供真实联系 User-Agent。

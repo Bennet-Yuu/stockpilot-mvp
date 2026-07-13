@@ -20,6 +20,14 @@
 - [x] lint/typecheck/test/build 通过；`pnpm audit --audit-level high` 通过（仍有 1 个 moderate、1 个 low 的开发工具链 esbuild 提示）；browser smoke 和敏感文件审计通过。
 - [ ] 提交并推送 feature 分支。
 
+### 0.3 发布前加固（本轮）
+
+- [x] 严格过滤受支持表单、同期间修订优先级、跨年度 concept fallback 和无重复年度期间。
+- [x] FCF 单位/期间兼容性检查、source/system-derived provenance、缺失值 warning 和两条 derivedFrom。
+- [x] 三个 SEC route 的统一 metadata + Zod response schema，以及流式响应大小上限取消。
+- [x] 显式 `test:sec-live`、CI workflow 和敏感信息扫描规则。
+- [ ] 提供真实可联系 SEC User-Agent 并完成五家公司 live smoke；当前 `.env.local` 不存在，因此不能宣称 live 通过。
+
 ## 可验证命令
 
 在 Codex 运行时使用：`pnpm --ignore-workspace run lint`、`pnpm --ignore-workspace run typecheck`、`pnpm --ignore-workspace test`、`pnpm --ignore-workspace run build`。SEC 常规测试不访问网络；启用 live 前必须在本地 `.env.local` 提供真实联系 User-Agent。

@@ -42,3 +42,15 @@ HTTP route 使用 400 表示 ticker 错误、200 表示有 snapshot（包括 fal
 - Sample market/scenario：模拟价格、市场指标、研究报告和看多/看空情景。
 
 SEC snapshot 不改变本地 `localStorage` v2 用户数据，也不作为任何交易执行依据。
+
+## Route metadata contract
+
+`GET /api/sec/company/:ticker` 和 `GET /api/sec/filings/:ticker` 与 snapshot 一样返回统一元数据：
+
+```text
+{ ticker, sourceMode, status, fetchedAt, asOf, warnings, identity | filings }
+```
+
+`sourceMode` 来自 provider 状态，不根据 filings 数量推断。无 User-Agent 时是 `sample/not-configured`；刷新失败但仍有旧快照时是 `stale-cache/fallback`。
+
+`SecNormalizedFact.provenanceType` 为 `source` 或 `system-derived`。FCF 的 `system-derived` 事实必须包含两条 `derivedFrom`，分别指向同期间、同单位的 OCF 与 CapEx source facts。单位不兼容、期间不匹配或任何来源缺失时，metric 为 `unavailable` 并提供可读 warning。

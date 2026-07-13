@@ -24,6 +24,7 @@ export type SecMetricName =
   | "Diluted EPS";
 
 export type SecPeriodKind = "annual" | "quarterly" | "instant";
+export type SecFactProvenanceType = "source" | "system-derived";
 
 export interface SecCompanyIdentity {
   ticker: Ticker;
@@ -53,6 +54,7 @@ export interface SecFactProvenance {
 export interface SecNormalizedFact extends SecFactProvenance {
   metric: SecMetricName;
   value: number;
+  provenanceType: SecFactProvenanceType;
   derivedFrom?: SecFactProvenance[];
 }
 
@@ -75,7 +77,7 @@ export interface SecAnnualFinancialPoint {
 
 export interface SecRecentFiling {
   accessionNumber: string;
-  form: "10-K" | "10-Q" | "8-K";
+  form: "10-K" | "10-K/A" | "10-Q" | "10-Q/A" | "8-K";
   filingDate: string;
   reportDate?: string;
   primaryDocument: string;
@@ -89,6 +91,24 @@ export interface SecCompanyFactsSummary {
   taxonomyCount: number;
   conceptCount: number;
   retrievedAt: string;
+}
+
+export interface SecSnapshotMetadata {
+  sourceMode: SecSourceMode;
+  status: SecSnapshotStatus;
+  fetchedAt: string;
+  asOf: string;
+  warnings: string[];
+}
+
+export interface SecCompanyIdentityResponse extends SecSnapshotMetadata {
+  ticker: Ticker;
+  identity: SecCompanyIdentity;
+}
+
+export interface SecRecentFilingsResponse extends SecSnapshotMetadata {
+  ticker: Ticker;
+  filings: SecRecentFiling[];
 }
 
 export interface SecCompanyFinancialSnapshot {

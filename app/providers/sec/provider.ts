@@ -31,7 +31,7 @@ export class SecFilingDataProviderImpl implements SecFilingDataProvider {
     const now = this.clock();
     const fresh = this.cache.getFresh<SecCompanyFinancialSnapshot>(key, now);
     if (fresh) return this.withSource(fresh.value, "cached", "cached", ["Showing a cached SEC snapshot within the configured freshness window."]);
-    if (!this.configured || !this.client) return this.sampleWithStatus(ticker, now, "not-configured", ["SEC_USER_AGENT is not configured; showing sample fallback data without making an SEC request."]);
+    if (!this.configured || !this.client) return this.sampleWithStatus(ticker, now, "not-configured", ["SEC source access is not configured; showing sample fallback data without making a request."]);
 
     try {
       const submissions = await this.getSubmissions(ticker);
@@ -102,7 +102,7 @@ export class SecFilingDataProviderImpl implements SecFilingDataProvider {
 
   private safeReason(error: SecProviderError): string {
     if (error.code === "SEC_RATE_LIMITED") return "SEC rate limit reached after bounded retries.";
-    if (error.code === "SEC_NOT_CONFIGURED") return "SEC live access is not configured.";
+    if (error.code === "SEC_NOT_CONFIGURED") return "SEC source access is not configured.";
     if (error.code === "SEC_FORBIDDEN") return "SEC rejected the request; check the User-Agent contact string.";
     return "The provider returned a safe fallback status; no raw error details are exposed.";
   }

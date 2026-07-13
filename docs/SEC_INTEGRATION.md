@@ -43,3 +43,13 @@
 ## 本地运行
 
 复制 `.env.example` 为本地 `.env.local`，填入真实的联系 User-Agent 才会启用 live SEC 请求；不配置时完整 Demo 仍可运行且不会访问 SEC。不要提交 `.env`、真实邮箱或任何密钥。
+
+## 0.3 发布前加固
+
+- Company Facts 只接收 `10-K`、`10-K/A`、`10-Q`、`10-Q/A`；`8-K` 仅作为最近 filings 展示，不会进入财务指标。
+- 概念按候选优先级逐期选择。高优先级概念可以覆盖同一期间，较低优先级概念只补齐较早期间；输出的年度期间不重复，并保留实际 concept。
+- FCF 仅在 OCF 与 CapEx 的单位、期间起止日、财年和财季完全兼容时计算。当前只接受同一规范化单位（通常是 USD），不会把 shares 或 USDm 静默换算为 USD；缺少来源时显示 Unavailable，不填 0。
+- 每个 source fact 和 system-derived FCF 都返回 `provenanceType`、单位、期间、提交日期、form、accession 和 source URL。UI 使用 `SEC source`、`SEC cached`、`Stale SEC cache`、`Sample fallback` 标签。
+- 三个 SEC API route 都返回 `ticker`、`sourceMode`、`status`、`fetchedAt`、`asOf`、`warnings` 以及对应数据，并在返回前执行 Zod 校验。
+- 响应大小上限默认 2 MB；HTTP client 读取流时一旦超过上限即取消 reader，避免先把超大响应完整读入内存。
+- 普通 `pnpm test` 永远离线。只有明确执行 `pnpm test:sec-live` 才会访问 SEC；它要求 `.env.local` 中是真实、可联系的 User-Agent 邮箱，缺少时以非零状态跳过，不伪造通过。

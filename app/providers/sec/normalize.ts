@@ -5,8 +5,10 @@ import type { SecAnnualFinancialPoint, SecCompanyIdentity, SecCompanyFinancialSn
 import type { Ticker } from "../../data";
 
 const METRICS: SecMetricName[] = ["Revenue", "Operating Income", "Net Income", "Operating Cash Flow", "Capital Expenditure", "Free Cash Flow", "Assets", "Liabilities", "Cash and Cash Equivalents", "Diluted EPS"];
+const SUPPORTED_FACT_FORMS = new Set(["10-K", "10-K/A", "10-Q", "10-Q/A"]);
 
 type FilingLookup = Map<string, { primaryDocument: string; filingDate: string; reportDate?: string }>;
+type FactCandidate = { taxonomy: string; concept: string; unit: string; fact: SecRawFact; candidateRank: number };
 
 function filingLookup(submissions: SecSubmissions): FilingLookup {
   const recent = submissions.filings.recent;
@@ -34,25 +36,35 @@ function isAnnual(fact: SecRawFact): boolean {
   return periodKind(fact) === "annual";
 }
 
+function isSupportedFact(fact: SecRawFact): boolean {
+  return SUPPORTED_FACT_FORMS.has(fact.form);
+}
+
+function normalizeUnit(unit: string): string {
+  return unit.trim().toLowerCase().replace(/\s+/g, "");
+}
+
 function factSourceUrl(cik: string, fact: SecRawFact, filings: FilingLookup): string {
   const filing = filings.get(fact.accn);
   if (filing) return secArchiveUrl(cik, fact.accn, filing.primaryDocument);
   return `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`;
 }
 
-function compareFacts(a: SecRawFact, b: SecRawFact): number {
-  const filed = b.filed.localeCompare(a.filed);
+function compareFacts(a: FactCandidate, b: FactCandidate): number {
+  if (a.candidateRank !== b.candidateRank) return a.candidateRank - b.candidateRank;
+  const filed = b.fact.filed.localeCompare(a.fact.filed);
   if (filed !== 0) return filed;
-  return b.accn.localeCompare(a.accn);
+  return b.fact.accn.localeCompare(a.fact.accn);
 }
 
 function chooseUnit(units: Record<string, SecRawFact[]>, metric: SecMetricName): [string, SecRawFact[]] | undefined {
   const entries = Object.entries(units);
   for (const unit of preferredUnits(metric)) {
-    const found = entries.find(([name, values]) => name.toLowerCase().replaceAll(" ", "") === unit.toLowerCase().replaceAll(" ", "") && values.length > 0);
+    const expected = normalizeUnit(unit);
+    const found = entries.find(([name, values]) => normalizeUnit(name) === expected && values.length > 0);
     if (found) return found;
   }
-  return entries.find(([, values]) => values.length > 0);
+  return undefined;
 }
 
 function sourceProvenance(taxonomy: string, concept: string, unit: string, fact: SecRawFact, cik: string, filings: FilingLookup): SecFactProvenance {
@@ -63,50 +75,67 @@ function provenanceFromFact(fact: SecNormalizedFact): SecFactProvenance {
   return { taxonomy: fact.taxonomy, concept: fact.concept, unit: fact.unit, form: fact.form, filedAt: fact.filedAt, periodEnd: fact.periodEnd, periodStart: fact.periodStart, fiscalYear: fact.fiscalYear, fiscalPeriod: fact.fiscalPeriod, accessionNumber: fact.accessionNumber, sourceUrl: fact.sourceUrl, periodKind: fact.periodKind };
 }
 
-function toNormalizedFact(metric: SecMetricName, taxonomy: string, concept: string, unit: string, fact: SecRawFact, cik: string, filings: FilingLookup): SecNormalizedFact {
-  const provenance = sourceProvenance(taxonomy, concept, unit, fact, cik, filings);
-  return { ...provenance, metric, value: metric === "Capital Expenditure" ? Math.abs(fact.val) : fact.val };
+function toNormalizedFact(metric: SecMetricName, candidate: FactCandidate, cik: string, filings: FilingLookup): SecNormalizedFact {
+  const provenance = sourceProvenance(candidate.taxonomy, candidate.concept, candidate.unit, candidate.fact, cik, filings);
+  return { ...provenance, metric, value: metric === "Capital Expenditure" ? Math.abs(candidate.fact.val) : candidate.fact.val, provenanceType: "source" };
 }
 
-function factsForMetric(facts: SecCompanyFacts, metric: SecMetricName): Array<{ taxonomy: string; concept: string; unit: string; fact: SecRawFact }> {
+function factsForMetric(facts: SecCompanyFacts, metric: SecMetricName): FactCandidate[] {
   const candidates = conceptCandidates(metric);
-  const found: Array<{ taxonomy: string; concept: string; unit: string; fact: SecRawFact }> = [];
-  for (const taxonomy of Object.keys(facts.facts)) {
-    const taxonomyFacts = facts.facts[taxonomy];
-    for (const candidate of candidates) {
-      const concept = taxonomyFacts[candidate];
+  const found: FactCandidate[] = [];
+  for (let candidateRank = 0; candidateRank < candidates.length; candidateRank += 1) {
+    const candidate = candidates[candidateRank];
+    for (const taxonomy of Object.keys(facts.facts)) {
+      const concept = facts.facts[taxonomy][candidate];
       if (!concept) continue;
       const selected = chooseUnit(concept.units, metric);
-      if (selected) for (const fact of selected[1]) found.push({ taxonomy, concept: candidate, unit: selected[0], fact });
-      if (found.length > 0) break;
+      if (!selected) continue;
+      for (const fact of selected[1]) if (isSupportedFact(fact)) found.push({ taxonomy, concept: candidate, unit: selected[0], fact, candidateRank });
     }
-    if (found.length > 0) break;
   }
   return found;
 }
 
-function metricFacts(facts: SecCompanyFacts, metric: SecMetricName, cik: string, filings: FilingLookup): SecNormalizedFact[] {
-  if (metric === "Free Cash Flow") return [];
-  return factsForMetric(facts, metric).map(({ taxonomy, concept, unit, fact }) => toNormalizedFact(metric, taxonomy, concept, unit, fact, cik, filings));
+function periodKey(fact: SecRawFact): string {
+  return `${fact.end}|${fact.start ?? ""}|${fact.fy ?? ""}|${fact.fp ?? ""}`;
 }
 
-function dedupeAndSort(values: SecNormalizedFact[], annualOnly: boolean): SecNormalizedFact[] {
-  const selected = new Map<string, SecNormalizedFact>();
-  for (const fact of values) {
-    if (annualOnly && !isAnnual({ accn: fact.accessionNumber, fy: fact.fiscalYear, fp: fact.fiscalPeriod, form: fact.form, filed: fact.filedAt, end: fact.periodEnd, start: fact.periodStart, val: fact.value })) continue;
-    const key = `${fact.periodEnd}|${fact.fiscalYear ?? ""}|${fact.form.replace(/\/A$/, "")}`;
+function selectFacts(values: FactCandidate[], annualOnly: boolean): FactCandidate[] {
+  const selected = new Map<string, FactCandidate>();
+  for (const candidate of values) {
+    if (annualOnly && !isAnnual(candidate.fact)) continue;
+    const key = periodKey(candidate.fact);
     const previous = selected.get(key);
-    if (!previous || compareFacts({ accn: fact.accessionNumber, filed: fact.filedAt, form: fact.form, end: fact.periodEnd, val: fact.value }, { accn: previous.accessionNumber, filed: previous.filedAt, form: previous.form, end: previous.periodEnd, val: previous.value }) < 0) selected.set(key, fact);
+    if (!previous || compareFacts(candidate, previous) < 0) selected.set(key, candidate);
   }
-  return [...selected.values()].sort((a, b) => b.periodEnd.localeCompare(a.periodEnd) || b.filedAt.localeCompare(a.filedAt));
+  return [...selected.values()].sort((a, b) => b.fact.end.localeCompare(a.fact.end) || b.fact.filed.localeCompare(a.fact.filed));
 }
 
-function unavailable(metric: SecMetricName, warning = "This SEC concept is not available in the returned facts."): SecFinancialMetric {
+function unavailable(metric: SecMetricName, warning = "No supported SEC fact with a compatible unit was returned; this metric is unavailable."): SecFinancialMetric {
   return { metric, status: "unavailable", annualHistory: [], warning };
 }
 
+function metricFacts(facts: SecCompanyFacts, metric: SecMetricName, cik: string, filings: FilingLookup): SecNormalizedFact[] {
+  if (metric === "Free Cash Flow") return [];
+  return selectFacts(factsForMetric(facts, metric), false).map((candidate) => toNormalizedFact(metric, candidate, cik, filings));
+}
+
+function samePeriod(a: SecNormalizedFact, b: SecNormalizedFact): boolean {
+  return a.periodEnd === b.periodEnd && a.periodStart === b.periodStart && a.fiscalYear === b.fiscalYear && normalizeUnit(a.unit) === normalizeUnit(b.unit);
+}
+
+function fcfWarning(ocfAnnual: SecNormalizedFact[], capexAnnual: SecNormalizedFact[], freeCashFlows: SecNormalizedFact[]): string | undefined {
+  if (ocfAnnual.length === 0) return "Free Cash Flow unavailable: Operating Cash Flow is missing; no zero was substituted.";
+  if (capexAnnual.length === 0) return "Free Cash Flow unavailable: Capital Expenditure is missing; no zero was substituted.";
+  const ocfUnit = ocfAnnual[0]?.unit;
+  const capexUnit = capexAnnual[0]?.unit;
+  if (!ocfUnit || !capexUnit || normalizeUnit(ocfUnit) !== normalizeUnit(capexUnit)) return `Free Cash Flow unavailable: Operating Cash Flow uses ${ocfUnit ?? "an unknown unit"} while Capital Expenditure uses ${capexUnit ?? "an unknown unit"}; no automatic conversion is applied.`;
+  if (freeCashFlows.length === 0) return "Free Cash Flow unavailable: Operating Cash Flow and Capital Expenditure have no matching fiscal year, period end, and period start.";
+  if (freeCashFlows.length < Math.min(ocfAnnual.length, capexAnnual.length)) return "Some annual Free Cash Flow periods are unavailable because the OCF and CapEx periods did not match exactly.";
+  return undefined;
+}
+
 export function normalizeRecentFilings(submissionsInput: unknown, ticker: Ticker): SecRecentFiling[] {
-  void ticker;
   const submissions = secSubmissionsSchema.parse(submissionsInput);
   const recent = submissions.filings.recent;
   const filings: SecRecentFiling[] = [];
@@ -115,10 +144,10 @@ export function normalizeRecentFilings(submissionsInput: unknown, ticker: Ticker
     const accessionNumber = recent.accessionNumber[index];
     const filingDate = recent.filingDate[index];
     const primaryDocument = recent.primaryDocument[index];
-    if (!accessionNumber || !filingDate || !primaryDocument || (form !== "10-K" && form !== "10-Q" && form !== "8-K")) continue;
+    if (!accessionNumber || !filingDate || !primaryDocument || (form !== "10-K" && form !== "10-K/A" && form !== "10-Q" && form !== "10-Q/A" && form !== "8-K")) continue;
     filings.push({ accessionNumber, form, filingDate, reportDate: recent.reportDate[index], primaryDocument, sourceUrl: secArchiveUrl(submissions.cik, accessionNumber, primaryDocument), isXbrl: recent.isXBRL[index] });
   }
-  return filings.sort((a, b) => b.filingDate.localeCompare(a.filingDate)).slice(0, 10).map((filing) => ({ ...filing, form: filing.form, ticker }));
+  return filings.sort((a, b) => b.filingDate.localeCompare(a.filingDate)).slice(0, 10).map((filing) => ({ ...filing, ticker }));
 }
 
 export function normalizeFinancials(factsInput: unknown, submissionsInput: unknown, ticker: Ticker): { metrics: Record<SecMetricName, SecFinancialMetric>; annualHistory: SecAnnualFinancialPoint[] } {
@@ -130,25 +159,32 @@ export function normalizeFinancials(factsInput: unknown, submissionsInput: unkno
   for (const metric of METRICS) metricValues.set(metric, metricFacts(facts, metric, submissions.cik, filings));
 
   const annualByMetric = new Map<SecMetricName, SecNormalizedFact[]>();
-  for (const metric of METRICS.filter((value) => value !== "Free Cash Flow")) annualByMetric.set(metric, dedupeAndSort(metricValues.get(metric) ?? [], true));
+  for (const metric of METRICS.filter((value) => value !== "Free Cash Flow")) {
+    const candidates = selectFacts(factsForMetric(facts, metric), true);
+    annualByMetric.set(metric, candidates.map((candidate) => toNormalizedFact(metric, candidate, submissions.cik, filings)));
+  }
 
   const ocfAnnual = annualByMetric.get("Operating Cash Flow") ?? [];
   const capexAnnual = annualByMetric.get("Capital Expenditure") ?? [];
   const freeCashFlows: SecNormalizedFact[] = [];
-  for (const ocf of ocfAnnual) {
-    const capex = capexAnnual.find((value) => value.periodEnd === ocf.periodEnd && value.fiscalYear === ocf.fiscalYear);
-    if (!capex) continue;
-    freeCashFlows.push({ ...ocf, metric: "Free Cash Flow", value: ocf.value - capex.value, derivedFrom: [provenanceFromFact(ocf), provenanceFromFact(capex)] });
+  if (ocfAnnual.length > 0 && capexAnnual.length > 0 && normalizeUnit(ocfAnnual[0]?.unit ?? "") === normalizeUnit(capexAnnual[0]?.unit ?? "")) {
+    for (const ocf of ocfAnnual) {
+      const capex = capexAnnual.find((value) => samePeriod(ocf, value));
+      if (!capex) continue;
+      freeCashFlows.push({ ...ocf, metric: "Free Cash Flow", value: ocf.value - capex.value, provenanceType: "system-derived", derivedFrom: [provenanceFromFact(ocf), provenanceFromFact(capex)] });
+    }
   }
-  const freeCashFlowAnnual = dedupeAndSort(freeCashFlows, false);
-  metricValues.set("Free Cash Flow", freeCashFlowAnnual);
+  const freeCashFlowAnnual = freeCashFlows.sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
+  metricValues.set("Free Cash Flow", freeCashFlows);
   annualByMetric.set("Free Cash Flow", freeCashFlowAnnual);
+  const fcfWarningText = fcfWarning(ocfAnnual, capexAnnual, freeCashFlows);
 
   const metrics = {} as Record<SecMetricName, SecFinancialMetric>;
   for (const metric of METRICS) {
     const annualHistory = annualByMetric.get(metric) ?? [];
-    const allValues = dedupeAndSort(metricValues.get(metric) ?? [], false);
-    metrics[metric] = allValues.length > 0 ? { metric, status: "available", latest: allValues[0], annualHistory: annualHistory.slice(0, 5) } : unavailable(metric);
+    const allValues = metricValues.get(metric) ?? [];
+    if (metric === "Free Cash Flow") metrics[metric] = allValues.length > 0 ? { metric, status: "available", latest: allValues[0], annualHistory: annualHistory.slice(0, 5), warning: fcfWarningText } : unavailable(metric, fcfWarningText);
+    else metrics[metric] = allValues.length > 0 ? { metric, status: "available", latest: allValues[0], annualHistory: annualHistory.slice(0, 5) } : unavailable(metric);
   }
   const periodEnds = new Set<string>();
   for (const metric of ["Revenue", "Net Income", "Operating Cash Flow", "Free Cash Flow"] as SecMetricName[]) for (const fact of metrics[metric].annualHistory) periodEnds.add(fact.periodEnd);
@@ -166,5 +202,6 @@ export function normalizeSnapshot(factsInput: unknown, submissionsInput: unknown
   const submissions = secSubmissionsSchema.parse(submissionsInput);
   const identity: SecCompanyIdentity = { ticker, cik: submissions.cik.padStart(10, "0"), legalName: submissions.name, exchanges: submissions.exchanges, sic: submissions.sic, sicDescription: submissions.sicDescription, fiscalYearEnd: submissions.fiscalYearEnd };
   const normalized = normalizeFinancials(factsInput, submissionsInput, ticker);
-  return { ticker, cik: identity.cik, companyName: submissions.name, identity, metrics: normalized.metrics, annualHistory: normalized.annualHistory, recentFilings: normalizeRecentFilings(submissionsInput, ticker), sourceMode, status, fetchedAt, asOf: normalized.annualHistory[0]?.periodEnd ?? fetchedAt.slice(0, 10), warnings };
+  const metricWarnings = Object.values(normalized.metrics).flatMap((metric) => metric.warning ? [metric.warning] : []).filter((warning) => warning.startsWith("Free Cash Flow"));
+  return { ticker, cik: identity.cik, companyName: submissions.name, identity, metrics: normalized.metrics, annualHistory: normalized.annualHistory, recentFilings: normalizeRecentFilings(submissionsInput, ticker), sourceMode, status, fetchedAt, asOf: normalized.annualHistory[0]?.periodEnd ?? fetchedAt.slice(0, 10), warnings: [...warnings, ...metricWarnings] };
 }

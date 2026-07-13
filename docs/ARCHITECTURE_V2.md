@@ -27,7 +27,7 @@ StockPilot 是美股研究教育、买入检查、模拟交易和复盘工具。
 
 - `/api/sec/snapshot/:ticker` 返回统一 `SecCompanyFinancialSnapshot`。
 - `/api/sec/company/:ticker` 返回身份。
-- `/api/sec/filings/:ticker` 返回最近 10-K/10-Q/8-K。
+- `/api/sec/filings/:ticker` 返回最近 10-K/10-K/A/10-Q/10-Q/A/8-K。
 
 Route 只接受五个白名单 ticker，使用 typed errors 和安全 HTTP 错误；不返回 stack、原始响应或秘密环境变量。浏览器 `SecSnapshotPanel` 只 fetch 同源 API，不能直接请求 SEC。
 
@@ -47,3 +47,9 @@ Stock detail 将 SEC panel 放在 Sample fundamentals 之后，保留 Research P
 ## 验证与降级
 
 单元测试使用 `tests/fixtures/sec/` 离线 fixture 和注入 transport，禁止常规测试访问网络。CI/本地验证顺序为 lint、typecheck、unit/render tests、production build 和 dependency audit。无 User-Agent 的浏览器 smoke test 必须能完整打开 Demo，并显示可理解的 SEC fallback 状态。
+
+## 0.3 release hardening
+
+发布前验证由 `.github/workflows/ci.yml` 固定为 pnpm frozen lockfile、lint、strict typecheck、离线 test、production build 和 production dependency audit。CI 不注入 SEC User-Agent，也不会执行 live smoke。
+
+`pnpm test:sec-live` 是显式、人工触发的五 ticker 验证命令；它只输出状态、内容长度/读取字节数和不可用计数，不打印 User-Agent 或完整 SEC JSON。没有真实联系邮箱时命令明确退出为 skipped，必须由部署环境补充后再运行。

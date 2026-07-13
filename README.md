@@ -41,6 +41,8 @@ npm run build
 
 `npm test` 使用完全离线 SEC fixtures，覆盖 CIK 映射、概念回退、年度/季度筛选、修订去重、单位、FCF、请求头、限速/重试、缓存/fallback、API schema，以及 0.2 ledger、Checklist、Journal、Insights 和 HTML 渲染回归。
 
+只有在 `.env.local` 中填写真实可联系邮箱后，才手动运行 `npm run test:sec-live`（或 `pnpm test:sec-live`）访问 SEC，验证 AAPL、MSFT、NVDA、AMZN、TSLA。没有配置时该命令会明确跳过并返回非零状态；常规 `npm test` 不访问网络。
+
 ## 目录
 
 ```text

@@ -70,6 +70,50 @@ export interface FetchSecHttpClientOptions {
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
   fetchImpl?: typeof fetch;
+  onResponse?: (stats: SecHttpResponseStats) => void;
+}
+
+export interface SecHttpResponseStats {
+  url: string;
+  status: number;
+  contentLength?: number;
+  bytesRead: number;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError" || error instanceof Error && error.name === "AbortError";
+}
+
+async function readResponseText(response: Response, maxResponseBytes: number, onBytesRead: (bytesRead: number) => void): Promise<string> {
+  if (!response.body) {
+    const text = await response.text();
+    const bytesRead = new TextEncoder().encode(text).byteLength;
+    onBytesRead(bytesRead);
+    if (bytesRead > maxResponseBytes) throw new SecProviderError("SEC_RESPONSE_TOO_LARGE", "SEC response exceeded the safety limit.");
+    return text;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytesRead = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytesRead += chunk.value.byteLength;
+      onBytesRead(bytesRead);
+      if (bytesRead > maxResponseBytes) {
+        await reader.cancel();
+        throw new SecProviderError("SEC_RESPONSE_TOO_LARGE", "SEC response exceeded the safety limit.");
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(bytesRead);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
 }
 
 export class FetchSecHttpClient implements SecHttpClient {
@@ -80,6 +124,7 @@ export class FetchSecHttpClient implements SecHttpClient {
   private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly fetchImpl: typeof fetch;
   private readonly rateLimiter: SecRateLimiter;
+  private readonly onResponse?: (stats: SecHttpResponseStats) => void;
 
   constructor(options: FetchSecHttpClientOptions = {}) {
     const config = getSecRuntimeConfig();
@@ -90,6 +135,7 @@ export class FetchSecHttpClient implements SecHttpClient {
     this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.rateLimiter = new SecRateLimiter(options.requestsPerSecond ?? config.requestsPerSecond, options.now, this.sleep);
+    this.onResponse = options.onResponse;
   }
 
   async getJson<T>(url: string): Promise<T> {
@@ -110,17 +156,20 @@ export class FetchSecHttpClient implements SecHttpClient {
         if (response.status === 429) throw new SecProviderError("SEC_RATE_LIMITED", "SEC rate limit reached.", { status: 429, retryable: true });
         if (response.status >= 500 && response.status <= 599) throw new SecProviderError("SEC_HTTP_ERROR", "SEC returned a temporary server error.", { status: response.status, retryable: true });
         if (!response.ok) throw new SecProviderError("SEC_HTTP_ERROR", "SEC returned an error response.", { status: response.status });
-        const contentLength = Number(response.headers.get("content-length") ?? 0);
-        if (contentLength > this.maxResponseBytes) throw new SecProviderError("SEC_RESPONSE_TOO_LARGE", "SEC response exceeded the safety limit.");
-        const text = await response.text();
-        if (new TextEncoder().encode(text).byteLength > this.maxResponseBytes) throw new SecProviderError("SEC_RESPONSE_TOO_LARGE", "SEC response exceeded the safety limit.");
+        const contentLengthHeader = response.headers.get("content-length");
+        const parsedContentLength = contentLengthHeader ? Number(contentLengthHeader) : Number.NaN;
+        const contentLength = Number.isFinite(parsedContentLength) ? parsedContentLength : undefined;
+        if (contentLength !== undefined && contentLength > this.maxResponseBytes) throw new SecProviderError("SEC_RESPONSE_TOO_LARGE", "SEC response exceeded the safety limit.");
+        let bytesRead = 0;
+        const text = await readResponseText(response, this.maxResponseBytes, (bytes) => { bytesRead = bytes; });
+        this.onResponse?.({ url, status: response.status, contentLength, bytesRead });
         try {
           return JSON.parse(text) as T;
         } catch {
           throw new SecProviderError("SEC_INVALID_JSON", "SEC returned invalid JSON.");
         }
       } catch (error) {
-        const safe = error instanceof SecProviderError ? error : error instanceof DOMException && error.name === "AbortError" ? new SecProviderError("SEC_TIMEOUT", "SEC request timed out.", { retryable: true }) : new SecProviderError("SEC_NETWORK_ERROR", "SEC network request failed.", { retryable: true });
+        const safe = error instanceof SecProviderError ? error : isAbortError(error) ? new SecProviderError("SEC_TIMEOUT", "SEC request timed out.", { retryable: true }) : new SecProviderError("SEC_NETWORK_ERROR", "SEC network request failed.", { retryable: true });
         lastError = safe;
         if (!safe.retryable || attempt >= this.maxRetries) throw safe;
         await this.sleep(250 * 2 ** attempt);

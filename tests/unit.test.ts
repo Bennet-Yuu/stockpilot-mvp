@@ -4,10 +4,22 @@ import { stocks } from "../app/data";
 import { calculateEvidenceScore, calculateReadiness } from "../app/domain/scoring";
 import { calculateTradeMetrics } from "../app/domain/portfolio";
 import type { ChecklistInput, TradeRecord } from "../app/domain/models";
+import { readLocalePreference, writeLocalePreference } from "../app/i18n";
 import { MockMarketDataProvider } from "../app/providers/marketData";
 import { readUserData, userDataSchema, writeUserData } from "../app/storage/userData";
 
 const blank: ChecklistInput = { why: "", holding: "", invalidation: "", maxLoss: "", weight: "", driver: "", event: "", target: "", exit: "" };
+
+test("locale preference defaults to Chinese and persists the English toggle", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  } as unknown as Storage;
+  assert.equal(readLocalePreference(storage), "zh");
+  writeLocalePreference("en", storage);
+  assert.equal(readLocalePreference(storage), "en");
+});
 
 test("research score stays within 0–100 and preserves the five weights", () => {
   assert.equal(calculateEvidenceScore(stocks.AAPL), 73);

@@ -7,6 +7,7 @@ import { stocks, tickerList, type Stock, type Ticker } from "./data";
 import { calculateEvidenceScore, calculateReadiness } from "./domain/scoring";
 import { summarizePortfolio } from "./domain/portfolio";
 import type { ChecklistInput as Checklist, JournalRecord, TradeRecord as Trade, WatchlistRecord as WatchItem, WatchStatus, UserData } from "./domain/models";
+import { type Locale, readLocalePreference, translateDom, writeLocalePreference } from "./i18n";
 import { marketDataProvider } from "./providers/marketData";
 import { getBrowserStorage, readThemePreference, readUserData, writeThemePreference, writeUserData } from "./storage/userData";
 
@@ -41,6 +42,7 @@ export default function StockPilotApp({ initialView = "dashboard", initialTicker
   const [ticker,setTicker]=useState<Ticker>(initialTicker);
   const [query,setQuery]=useState("");
   const [theme,setTheme]=useState<"light"|"dark">(()=>readThemePreference(getBrowserStorage()));
+  const [locale,setLocale]=useState<Locale>(()=>readLocalePreference(getBrowserStorage()));
   const [boot] = useState<{data:UserData;hasSavedData:boolean;recovered:boolean}>(()=>{
     const defaults:UserData={version:1,watchlist:initialWatchlist,trades:initialTrades,checklistDrafts:{[initialTicker]:emptyChecklist},journals:{}};
     if(typeof window==="undefined") return {data:defaults,hasSavedData:false,recovered:false};
@@ -61,6 +63,23 @@ export default function StockPilotApp({ initialView = "dashboard", initialTicker
     if(boot.recovered) window.setTimeout(()=>setToast("Saved data was unreadable; demo data was restored"),0);
   },[boot]);
   useEffect(()=>{ document.documentElement.dataset.theme=theme; writeThemePreference(theme,getBrowserStorage()); },[theme]);
+  useEffect(()=>{
+    document.documentElement.dataset.locale=locale;
+    writeLocalePreference(locale,getBrowserStorage());
+    const root=document.querySelector<HTMLElement>(".app-shell");
+    if(!root) return;
+    let translating=false;
+    const applyTranslation=()=>{
+      if(translating) return;
+      translating=true;
+      translateDom(root,locale);
+      translating=false;
+    };
+    applyTranslation();
+    const observer=new MutationObserver(()=>applyTranslation());
+    observer.observe(root,{subtree:true,childList:true,characterData:true});
+    return()=>observer.disconnect();
+  },[locale,view]);
   useEffect(()=>{
     const storage=getBrowserStorage();
     const existing=readUserData(storage).data;
@@ -89,6 +108,10 @@ export default function StockPilotApp({ initialView = "dashboard", initialTicker
         <div className="global-search">
           <span aria-hidden="true">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search AAPL, MSFT, NVDA, AMZN, TSLA" aria-label="Search stocks" />
           {query&&<div className="search-popover">{searchResults.length?searchResults.map(t=><button key={t} onClick={()=>openStock(t)}><b>{t}</b><span>{stocks[t].name}</span><em><Money value={stocks[t].price}/></em></button>):<p>No supported demo ticker found.</p>}</div>}
+        </div>
+        <div className="locale-toggle" role="group" aria-label="Language">
+          <button className={locale==="zh"?"active":""} onClick={()=>setLocale("zh")} aria-pressed={locale==="zh"}>中文</button>
+          <button className={locale==="en"?"active":""} onClick={()=>setLocale("en")} aria-pressed={locale==="en"}>EN</button>
         </div>
         <button className="icon-button" onClick={()=>setTheme(theme==="light"?"dark":"light")} aria-label="Toggle color theme">{theme==="light"?"☾":"☀"}</button>
         <div className="avatar" aria-label="Demo user">DW</div>

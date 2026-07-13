@@ -11,3 +11,6 @@
 .source-links{border-top:1px solid var(--line);padding:15px 22px;display:flex;align-items:center;gap:18px}.source-links>div{flex:1}.source-links p{font-size:9px;color:var(--muted);margin:5px 0 0}.source-links a{color:var(--brand);text-decoration:none;font-size:10px;font-weight:750;white-space:nowrap}.source-links a:hover{text-decoration:underline}@media(max-width:760px){.source-links{align-items:flex-start;flex-direction:column;gap:9px}}
 footer a{color:var(--brand);font-weight:750;text-decoration:none}footer a:hover{text-decoration:underline}
 .recharts-shell{height:230px;padding:0 18px 8px}.recharts-shell .recharts-cartesian-grid line{stroke:var(--line)}
+.two-col>section,.table-wrap{min-width:0}
+.locale-toggle{display:flex;align-items:center;overflow:hidden;margin-left:12px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}.locale-toggle button{height:32px;padding:0 8px;border:0;background:transparent;color:var(--muted);font-size:10px;font-weight:750}.locale-toggle button.active{background:var(--brand-2);color:var(--brand)}
+@media(max-width:760px){.locale-toggle{margin-left:6px}.locale-toggle button{padding:0 6px}}

@@ -99,6 +99,8 @@
 
 ## 6. 文案规范
 
+- V1 默认显示简体中文；顶部 `中文 / EN` 切换即时生效，并仅保存在当前设备。
+- 中文翻译覆盖导航、表单、评分解释、风险警告、研究报告和模拟数据说明；公司名称、股票代码和原始来源名称保持可识别。
 - 使用 `sample price` 而非 `live price`。
 - 使用 `evidence score` 而非 `rating` 或 `recommendation`。
 - 使用 `paper trade` 而非 `order`。

@@ -2,6 +2,30 @@ export type Locale = "zh" | "en";
 
 const LOCALE_KEY = "stockpilot-locale";
 
+export const coreTranslations = {
+  "dashboard.greeting": { en: "Ready to research a company?", zh: "你好，今天准备研究哪家公司？" },
+  "dashboard.processReminder": { en: "A rising price alone is not an investment thesis.", zh: "股价上涨本身不能构成投资逻辑。" },
+  "research.coverageExtensive": { en: "Research coverage is extensive", zh: "研究框架覆盖较完整" },
+  "research.coverageGaps": { en: "Research coverage has gaps", zh: "研究框架仍有待补充" },
+  "checklist.complete": { en: "Checklist substantially complete", zh: "检查项目已基本完成。" },
+  "checklist.pending": { en: "Decision checks pending", zh: "待完成决策检查。" },
+  "warning.invalidNumber": { en: "Position size and maximum loss must be numbers greater than 0 and no more than 100%.", zh: "仓位和最大可接受亏损必须为大于 0 且不超过 100% 的有效数字。" },
+  "warning.invalidTarget": { en: "Target price must be a valid number greater than 0.", zh: "目标价必须为大于 0 的有效数字。" },
+  "warning.insufficientCash": { en: "The planned paper trade exceeds available sample cash.", zh: "预计投入金额超过可用模拟现金。" },
+  "warning.zeroShares": { en: "The intended allocation is too small to purchase one whole sample share.", zh: "目标仓位不足以买入 1 股模拟股票。" },
+  "warning.missingInvalidation": { en: "Define what evidence would invalidate your thesis.", zh: "请明确填写什么证据会使投资逻辑失效。" },
+  "warning.missingExit": { en: "Write an exit or reassessment plan before creating a trade.", zh: "创建模拟交易前，请填写退出或重新评估计划。" },
+  "warning.oversized": { en: "Position size above 20% creates concentration risk.", zh: "仓位超过 20%，集中度风险过高，将阻止创建交易。" },
+  "warning.concentration": { en: "Position size above 10% deserves an explicit concentration review.", zh: "仓位超过 10%，请明确复核集中度风险。" },
+  "warning.highLoss": { en: "Maximum acceptable loss above 20% exceeds the beginner guardrail.", zh: "最大可接受亏损超过 20%，超出新手风险边界。" },
+  "warning.majorEvent": { en: "A major event is approaching. Record a plan before proceeding.", zh: "重大事件临近，请先记录应对计划。" },
+  "warning.eventUnknown": { en: "Confirm whether earnings or another major event is approaching.", zh: "请先确认是否临近财报或其他重大事件。" },
+  "warning.momentum": { en: "Recent price movement alone is not a fundamental thesis.", zh: "近期股价上涨本身不能构成基本面投资逻辑。" },
+} as const;
+export type TranslationKey=keyof typeof coreTranslations;
+export function t(key:TranslationKey,locale:Locale,variables:Record<string,string|number>={}):string{return Object.entries(variables).reduce((value,[name,replacement])=>value.replaceAll(`{${name}}`,String(replacement)),coreTranslations[key][locale])}
+export function checklistWarningText(code:string,severity:"serious"|"general",locale:Locale,fallback:string):string{const keys:Record<string,TranslationKey>={MISSING_INVALIDATION:"warning.missingInvalidation",MISSING_EXIT_PLAN:"warning.missingExit",HIGH_LOSS_LIMIT:"warning.highLoss",MAJOR_EVENT:"warning.majorEvent",EVENT_UNKNOWN:"warning.eventUnknown",MOMENTUM_CHASING:"warning.momentum",INVALID_NUMBER:"warning.invalidNumber",INVALID_TARGET:"warning.invalidTarget",INSUFFICIENT_CASH:"warning.insufficientCash",ZERO_SHARES:"warning.zeroShares"};if(code==="OVERSIZED_POSITION")return t(severity==="serious"?"warning.oversized":"warning.concentration",locale);return keys[code]?t(keys[code],locale):fallback}
+
 const translations: Record<string, string> = {
   "Dashboard": "仪表盘",
   "Research with a process": "用流程做研究",

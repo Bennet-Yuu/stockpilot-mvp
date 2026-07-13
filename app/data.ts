@@ -24,13 +24,13 @@ export const stocks: Record<Ticker, Stock> = {
     report: [
       {title:"Company Overview",body:"Apple combines premium hardware, an installed base of active devices, and recurring services. Its ecosystem increases switching costs and supports pricing power."},
       {title:"How the Company Makes Money",body:"The iPhone remains the largest revenue source. Mac, iPad, Wearables, and Services diversify the mix; Services typically carries higher gross margins."},
-      {title:"Bull Case",body:"Services mix expansion, device upgrades, and disciplined capital returns could support durable earnings-per-share growth even with modest revenue growth."},
-      {title:"Bear Case",body:"A mature smartphone market, regulatory pressure on App Store economics, and weaker demand in Greater China could compress growth and the valuation multiple."},
+      {title:"Bull Scenario",body:"Scenario, not forecast: Services mix expansion, device upgrades, and disciplined capital returns could support durable per-share growth. Sample content; verify independently."},
+      {title:"Bear Scenario",body:"Scenario, not forecast: a mature smartphone market, App Store regulation, and weaker demand in Greater China could pressure growth and margins."},
       {title:"Key Risks",body:"Supply-chain concentration, platform regulation, premium-device demand sensitivity, foreign exchange, and dependence on iPhone economics."},
-      {title:"Upcoming Catalysts",body:"Next product cycle, quarterly Services growth, developer conference announcements, and capital-return updates."},
-      {title:"Valuation Summary",body:"The sample forward P/E is above Apple’s long-run market premium. The current price assumes resilient margins and continued per-share growth."},
-      {title:"What Would Invalidate the Thesis",body:"Sustained installed-base contraction, material Services margin erosion, or two years of declining free cash flow without a credible recovery path."},
-      {title:"Questions Requiring Further Research",body:"How durable is Services growth by geography? What portion of AI investment can lift device upgrades? How exposed is App Store profit to regulatory remedies?"},
+      {title:"Potential Catalysts",body:"Sample items include the next product cycle, Services growth, developer announcements, and capital-return updates."},
+      {title:"Valuation Context",body:"The sample forward P/E is above Apple’s long-run market premium and assumes resilient margins and continued per-share growth."},
+      {title:"Thesis Invalidation",body:"The scenario weakens with sustained installed-base contraction, material Services margin erosion, or prolonged free-cash-flow decline."},
+      {title:"Further Research Questions",body:"How durable is Services growth by geography? Can AI investment affect upgrades? How exposed are App Store economics to regulatory remedies?"},
     ]
   },
   MSFT: {
@@ -56,20 +56,48 @@ export const stocks: Record<Ticker, Stock> = {
   },
 };
 
-const genericSections = [
-  ["Company Overview","The company operates a scaled platform in its core market, supported by brand, distribution, and ongoing product investment."],
-  ["How the Company Makes Money","Revenue comes from a mix of core products and higher-margin services. The durability and concentration of each stream require further review."],
-  ["Bull Case","Execution on the core franchise and higher-margin growth initiatives could expand earnings and free cash flow faster than revenue."],
-  ["Bear Case","Competitive pressure, slower demand, or sustained investment could reduce margins and challenge the current valuation."],
-  ["Key Risks","Competition, regulation, macro sensitivity, execution, customer concentration, and valuation compression."],
-  ["Upcoming Catalysts","Quarterly results, product updates, management guidance, and changes in industry demand."],
-  ["Valuation Summary","The sample valuation embeds continued growth. Compare cash-flow outcomes across base, upside, and downside cases before acting."],
-  ["What Would Invalidate the Thesis","Two consecutive periods of worsening core operating metrics without a credible, evidence-backed recovery plan."],
-  ["Questions Requiring Further Research","Which segment drives incremental profit? How durable is pricing power? Which leading indicator would reveal a slowdown first?"],
-];
-
-(["MSFT","NVDA","AMZN","TSLA"] as Ticker[]).forEach((ticker) => {
-  stocks[ticker].report = genericSections.map(([title,body]) => ({title,body}));
-});
+const reports:Record<Exclude<Ticker,"AAPL">,Array<{title:string;body:string}>>={
+  MSFT:[
+    {title:"Company Overview",body:"Microsoft combines enterprise software, Azure cloud infrastructure, Windows, security, developer tools, gaming, and business applications. Sample content; verify independently."},
+    {title:"How the Company Makes Money",body:"Commercial subscriptions, Azure consumption, server products, Windows licensing, advertising, devices, and gaming create a diversified mix with substantial recurring revenue."},
+    {title:"Bull Scenario",body:"Scenario, not forecast: Azure demand and paid AI features could sustain growth while recurring software revenue supports margins."},
+    {title:"Bear Scenario",body:"Scenario, not forecast: AI infrastructure spending could rise faster than monetization, while cloud competition or slower enterprise budgets pressure returns."},
+    {title:"Key Risks",body:"Cloud competition, cybersecurity failures, antitrust scrutiny, large capital commitments, and dependence on enterprise technology budgets require independent verification."},
+    {title:"Potential Catalysts",body:"Sample items include Azure growth disclosures, Copilot adoption evidence, margin trends, security execution, and capital-spending guidance."},
+    {title:"Valuation Context",body:"The sample forward multiple assumes durable double-digit earnings growth. Compare cash generation with the scale and timing of AI investment."},
+    {title:"Thesis Invalidation",body:"The scenario weakens if Azure growth decelerates materially while AI capital intensity rises without measurable revenue or margin benefits."},
+    {title:"Further Research Questions",body:"How much Copilot revenue is incremental? What is the useful life of AI infrastructure? Are security investments improving customer retention?"}],
+  NVDA:[
+    {title:"Company Overview",body:"NVIDIA supplies accelerated-computing chips, systems, networking, and software ecosystems. Sample content; verify independently."},
+    {title:"How the Company Makes Money",body:"Data-center compute and networking dominate the sample mix, supplemented by gaming, visualization, automotive, and software-related revenue."},
+    {title:"Bull Scenario",body:"Scenario, not forecast: expanding AI workloads and a broad software ecosystem could support demand beyond the initial training buildout."},
+    {title:"Bear Scenario",body:"Scenario, not forecast: customers could digest capacity, develop alternatives, or shift workloads while export limits constrain accessible markets."},
+    {title:"Key Risks",body:"Customer concentration, supply dependencies, export controls, rapid product cycles, custom silicon, and semiconductor cyclicality require verification."},
+    {title:"Potential Catalysts",body:"Sample items include architecture launches, supply availability, inference demand, networking attachment, and customer capital-spending plans."},
+    {title:"Valuation Context",body:"The sample multiple reflects exceptional growth and leaves sensitivity to normalization. Review earnings durability under lower growth assumptions."},
+    {title:"Thesis Invalidation",body:"The scenario weakens if data-center demand and margins decline together for multiple periods without broader software or inference adoption."},
+    {title:"Further Research Questions",body:"How concentrated is demand by customer? What share is training versus inference? How durable is the software moat versus custom accelerators?"}],
+  AMZN:[
+    {title:"Company Overview",body:"Amazon operates commerce, logistics, AWS cloud infrastructure, advertising, and subscription services. Sample content; verify independently."},
+    {title:"How the Company Makes Money",body:"Retail generates scale and customer traffic; third-party services, advertising, Prime, and AWS contribute different growth and margin profiles."},
+    {title:"Bull Scenario",body:"Scenario, not forecast: AWS and advertising growth plus retail efficiency could expand consolidated cash flow faster than sales."},
+    {title:"Bear Scenario",body:"Scenario, not forecast: heavy logistics and AI investment, cloud competition, or weak consumer demand could delay margin improvement."},
+    {title:"Key Risks",body:"Retail intensity, labor and delivery costs, regulation, cloud competition, capital allocation, and low consolidated margins require verification."},
+    {title:"Potential Catalysts",body:"Sample items include AWS growth, retail regional profitability, advertising trends, fulfillment productivity, and capital-spending guidance."},
+    {title:"Valuation Context",body:"Earnings multiples can obscure Amazon's segment mix. Compare operating income and free-cash-flow outcomes under different investment levels."},
+    {title:"Thesis Invalidation",body:"The scenario weakens if AWS growth and margins deteriorate while retail efficiency reverses for multiple reporting periods."},
+    {title:"Further Research Questions",body:"What drives incremental AWS margins? How repeatable are fulfillment savings? How much advertising growth depends on marketplace economics?"}],
+  TSLA:[
+    {title:"Company Overview",body:"Tesla produces electric vehicles, energy storage systems, charging products, and related software and services. Sample content; verify independently."},
+    {title:"How the Company Makes Money",body:"Automotive sales remain the largest source, while energy generation and storage, services, charging, software, and regulatory credits contribute."},
+    {title:"Bull Scenario",body:"Scenario, not forecast: lower production costs, energy-storage scale, and software adoption could diversify profit beyond vehicle sales."},
+    {title:"Bear Scenario",body:"Scenario, not forecast: price competition, slower EV demand, execution delays, or further automotive margin pressure could weaken cash generation."},
+    {title:"Key Risks",body:"Demand volatility, competition, manufacturing execution, key-person exposure, regulation, product concentration, and valuation assumptions require verification."},
+    {title:"Potential Catalysts",body:"Sample items include delivery and margin trends, lower-cost platform progress, energy deployments, factory utilization, and product milestones."},
+    {title:"Valuation Context",body:"The sample multiple depends on long-duration growth outside the current automotive profit base. Separate verified results from optional future scenarios."},
+    {title:"Thesis Invalidation",body:"The scenario weakens if automotive margins and free cash flow remain depressed without verified progress in energy or software economics."},
+    {title:"Further Research Questions",body:"What portion of value depends on unproven products? Are price reductions expanding lifetime economics? How capital-intensive is energy growth?"}],
+};
+Object.entries(reports).forEach(([ticker,report])=>{stocks[ticker as Exclude<Ticker,"AAPL">].report=report});
 
 export const tickerList = Object.keys(stocks) as Ticker[];

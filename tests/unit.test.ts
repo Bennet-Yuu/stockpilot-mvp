@@ -1,73 +1,39 @@
-import assert from "node:assert/strict";
 import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { stocks } from "../app/data";
-import { calculateEvidenceScore, calculateReadiness } from "../app/domain/scoring";
-import { calculateTradeMetrics } from "../app/domain/portfolio";
-import type { ChecklistInput, TradeRecord } from "../app/domain/models";
-import { readLocalePreference, writeLocalePreference } from "../app/i18n";
-import { MockMarketDataProvider } from "../app/providers/marketData";
-import { readUserData, userDataSchema, writeUserData } from "../app/storage/userData";
+import type { ChecklistInput, JournalRecord, TradeRecord, UserDataV1 } from "../app/domain/models";
+import { applyPurchase, calculateAvailableCash, calculatePortfolioValue, calculateRealizedPnL, calculateUnrealizedPnL, closeTrade, planTrade, summarizePortfolio, validateTradePlan } from "../app/domain/portfolio";
+import { calculateReadiness } from "../app/domain/scoring";
+import { calculateResearchProfile } from "../app/domain/researchProfile";
+import { readChecklistDraft, readJournalDraft, saveChecklistDraft, saveJournalDraft } from "../app/domain/drafts";
+import { summarizeInsights } from "../app/domain/insights";
+import { buildDecisionQueue } from "../app/domain/dashboard";
+import { emptyUserData, LEGACY_USER_DATA_STORAGE_KEY, migrateV1ToV2, readUserData, USER_DATA_STORAGE_KEY, writeUserData } from "../app/storage/userData";
+import { GET } from "../app/api/research/[ticker]/route";
 
-const blank: ChecklistInput = { why: "", holding: "", invalidation: "", maxLoss: "", weight: "", driver: "", event: "", target: "", exit: "" };
+class MemoryStorage implements Storage{private values=new Map<string,string>();get length(){return this.values.size}clear(){this.values.clear()}getItem(k:string){return this.values.get(k)??null}key(i:number){return [...this.values.keys()][i]??null}removeItem(k:string){this.values.delete(k)}setItem(k:string,v:string){this.values.set(k,v)}}
+const checklist=(overrides:Partial<ChecklistInput>={}):ChecklistInput=>({why:"Durable business evidence supports the thesis.",holding:"6–12 months",invalidation:"Revenue growth falls below the defined threshold for two periods.",maxLoss:"10",weight:"10",driver:"Fundamentals",event:"No",target:"150",exit:"Exit or reassess when the invalidation condition is met.",...overrides});
+const trade=(overrides:Partial<TradeRecord>={}):TradeRecord=>({id:1,ticker:"NVDA",buyPrice:100,shares:10,date:"2026-01-01",intendedWeightPercent:10,actualWeightPercentAtEntry:10,buyDriver:"Fundamentals",upcomingEventStatus:"No",targetPrice:130,maximumLossPercent:10,thesis:"AI demand remains durable",invalidationCondition:"Growth falls below threshold",exitPlan:"Exit when invalidated",expectedHoldingPeriod:"6–12 months",checklistScoreAtEntry:90,checklistWarningsAtEntry:[],createdAt:"2026-01-01T00:00:00.000Z",...overrides});
+const journal=(tradeId:number,mistakes:string[]=[]):JournalRecord=>({tradeId,buyReason:"Reason",sellReason:"Closed",emotionalState:"Calm",whatWentWell:"Sizing",whatWentWrong:"",thesisCorrect:"Yes",processCorrect:"Yes",lessonsLearned:"Keep process",mistakeCategories:mistakes});
 
-test("locale preference defaults to Chinese and persists the English toggle", () => {
-  const values = new Map<string, string>();
-  const storage = {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-  } as unknown as Storage;
-  assert.equal(readLocalePreference(storage), "zh");
-  writeLocalePreference("en", storage);
-  assert.equal(readLocalePreference(storage), "en");
-});
-
-test("research score stays within 0–100 and preserves the five weights", () => {
-  assert.equal(calculateEvidenceScore(stocks.AAPL), 73);
-  assert.ok(calculateEvidenceScore({ scores: [{ label: "test", value: 101, max: 100, explanation: "" }] }) <= 100);
-  assert.ok(calculateEvidenceScore({ scores: [{ label: "test", value: -2, max: 100, explanation: "" }] }) >= 0);
-});
-
-test("buy readiness warns on missing invalidation, concentration, loss and event risk", () => {
-  const result = calculateReadiness({ ...blank, why: "Price went up", weight: "25", maxLoss: "25", event: "Yes", driver: "Recent price movement" });
-  assert.equal(result.completedCount, 5);
-  assert.ok(result.score < 60);
-  assert.deepEqual(result.warnings.map((warning) => warning.code), ["MISSING_INVALIDATION", "OVERSIZED_POSITION", "HIGH_LOSS_LIMIT", "MAJOR_EVENT", "MOMENTUM_CHASING", "MISSING_EXIT_PLAN"]);
-});
-
-test("complete conservative checklist reaches a paper-trade-ready score", () => {
-  const result = calculateReadiness({ why: "Recurring revenue and improving free cash flow support a durable thesis.", holding: "6–12 months", invalidation: "Two quarters of falling free cash flow and slowing core growth.", maxLoss: "10", weight: "8", driver: "Fundamentals", event: "No", target: "245", exit: "Exit if the invalidation condition occurs." });
-  assert.equal(result.score, 100);
-  assert.equal(result.warnings.length, 0);
-});
-
-test("paper trade metrics use cost basis, value, return and portfolio weight", () => {
-  const trade: TradeRecord = { id: 1, ticker: "AAPL", buyPrice: 100, shares: 4, date: "2026-01-01", target: 130, maxLoss: 10, thesis: "", invalidation: "", holding: "6–12 months" };
-  assert.deepEqual(calculateTradeMetrics(trade, 125, 1000), { costBasis: 400, currentValue: 500, unrealizedPnL: 100, returnPercent: 0.25, portfolioWeight: 0.5 });
-});
-
-test("market provider accepts supported tickers and rejects invalid input", () => {
-  const provider = new MockMarketDataProvider();
-  assert.equal(provider.getStock("nvda")?.ticker, "NVDA");
-  assert.equal(provider.getStock("GME"), null);
-  assert.deepEqual(provider.listSupportedTickers(), ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA"]);
-});
-
-test("localStorage data is versioned, validated and safely recovered", () => {
-  const values = new Map<string, string>();
-  const storage: Storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => void values.set(key, value), removeItem: (key) => void values.delete(key), clear: () => void values.clear(), key: (index) => [...values.keys()][index] ?? null, get length() { return values.size; } };
-  const valid = { version: 1 as const, watchlist: [], trades: [], checklistDrafts: {}, journals: {} };
-  assert.equal(writeUserData(valid, storage), true);
-  assert.equal(readUserData(storage).recovered, false);
-  values.set("stockpilot-user-data-v1", "{broken json");
-  assert.equal(readUserData(storage).recovered, true);
-  assert.equal(userDataSchema.safeParse(valid).success, true);
-});
-
-test("key workflow can search NVDA, add it to watchlist and create a trade input", () => {
-  const provider = new MockMarketDataProvider();
-  const stock = provider.getStock("NVDA");
-  assert.equal(stock?.ticker, "NVDA");
-  assert.equal(calculateEvidenceScore(stock!), 79);
-  const checklist = { ...blank, why: "AI infrastructure demand supports revenue growth.", holding: "6–12 months", invalidation: "Data-center demand and free cash flow deteriorate for two quarters.", maxLoss: "10", weight: "8", driver: "Fundamentals", event: "No", target: "160", exit: "Reassess on thesis invalidation." };
-  assert.ok(calculateReadiness(checklist).score >= 60);
-});
+test("buy reduces cash and creates a deterministic buy transaction",()=>{const account=applyPurchase({initialCash:5000,cashBalance:5000,transactions:[]},trade());assert.equal(account.cashBalance,4000);assert.equal(calculateAvailableCash(account.initialCash,account.transactions),4000)});
+test("close increases cash and records realized P/L separately",()=>{const opened=applyPurchase({initialCash:5000,cashBalance:5000,transactions:[]},trade());const result=closeTrade(opened,[trade()],1,120,"2026-02-01T00:00:00.000Z");assert.equal(result.account.cashBalance,5200);assert.equal(result.trades[0].realizedPnL,200);assert.equal(result.trades[0].realizedReturnPercent,20)});
+test("realized, unrealized and portfolio value calculations are correct",()=>{assert.equal(calculateRealizedPnL(100,120,10),200);assert.equal(calculateUnrealizedPnL(trade(),110),100);assert.equal(calculatePortfolioValue(4000,[trade()],{NVDA:{price:110}} as never),5100);const summary=summarizePortfolio([trade(),trade({id:2,closed:true,closedAt:"2026-02-01",sellPrice:120,realizedPnL:200})],stocks,4000);assert.equal(summary.unrealizedPnL,388.5);assert.equal(summary.realizedPnL,200)});
+test("insufficient cash and zero shares reject a trade plan",()=>{const tooLarge=planTrade("NVDA",100,100,10000,500);assert.ok(validateTradePlan(tooLarge,500).some(w=>w.code==="INSUFFICIENT_CASH"));const tiny=planTrade("NVDA",100,1,500,500);assert.ok(validateTradePlan(tiny,500).some(w=>w.code==="ZERO_SHARES"))});
+test("serious warnings block creation while general warnings alone do not",()=>{const serious=calculateReadiness(checklist({invalidation:""}));assert.equal(serious.isValid,false);const general=calculateReadiness(checklist({weight:"15",event:"Yes"}));assert.equal(general.warnings.every(w=>w.severity==="general"),true);assert.equal(general.isValid,true)});
+test("invalid percentages and target are rejected",()=>{const result=calculateReadiness(checklist({weight:"abc",maxLoss:"0",target:"-1"}));assert.equal(result.isValid,false);assert.ok(result.warnings.some(w=>w.code==="INVALID_NUMBER"));assert.ok(result.warnings.some(w=>w.code==="INVALID_TARGET"))});
+test("intended allocation converts to whole sample shares",()=>{const plan=planTrade("NVDA",138.85,10,25000,25000);assert.equal(plan.shares,18);assert.equal(plan.purchaseCost,2499.3)});
+test("checklist drafts remain isolated by ticker",()=>{let drafts={};drafts=saveChecklistDraft(drafts,"AAPL",checklist({why:"Apple thesis"}));drafts=saveChecklistDraft(drafts,"NVDA",checklist({why:"NVIDIA thesis"}));assert.equal(readChecklistDraft(drafts,"AAPL").why,"Apple thesis");assert.equal(readChecklistDraft(drafts,"NVDA").why,"NVIDIA thesis");assert.equal(readChecklistDraft(drafts,"MSFT").why,"")});
+test("journals remain isolated and default from each trade thesis",()=>{let entries:Record<string,JournalRecord>={};entries=saveJournalDraft(entries,1,journal(99,["Poor research"]));entries=saveJournalDraft(entries,2,journal(2,["Emotional decision"]));assert.equal(entries["1"].tradeId,1);assert.deepEqual(readJournalDraft(entries,2,"Other").mistakeCategories,["Emotional decision"]);assert.equal(readJournalDraft(entries,3,"MSFT thesis").buyReason,"MSFT thesis")});
+test("insights use actual closed trades and journals",()=>{const trades=[trade({id:1,closed:true,closedAt:"x",sellPrice:120,realizedPnL:200,realizedReturnPercent:20}),trade({id:2,ticker:"AAPL",closed:true,closedAt:"x",sellPrice:90,realizedPnL:-100,realizedReturnPercent:-10})];const result=summarizeInsights(trades,{"1":journal(1,["Poor research"]),"2":journal(2,["Poor research"])});assert.equal(result.sampleSize,2);assert.equal(result.winRate,50);assert.equal(result.profitFactor,2);assert.deepEqual(result.mostCommonMistake,["Poor research",2]);assert.equal(result.bestTicker,null);assert.equal(result.isSmallSample,true)});
+test("insights empty state and small-sample flags are deterministic",()=>{assert.equal(summarizeInsights([],{}).sampleSize,0);assert.equal(summarizeInsights([trade({closed:true,closedAt:"x",realizedReturnPercent:5})],{}).isSmallSample,true)});
+test("decision queue reflects checklist, journal, thesis and watch-price state",()=>{const tasks=buildDecisionQueue([{ticker:"NVDA",target:140,reason:"",status:"Ready to Buy"}],{},[trade({id:3,closed:true,closedAt:"x"}),trade({id:4,invalidationCondition:""})],{});assert.ok(tasks.some(t=>t.kind==="checklist"));assert.ok(tasks.some(t=>t.kind==="journal"));assert.ok(tasks.some(t=>t.kind==="thesis"));assert.ok(tasks.some(t=>t.kind==="price"))});
+test("Research Profile excludes momentum and respects 100-point boundaries",()=>{const profile=calculateResearchProfile(stocks.NVDA);assert.equal(profile.dimensions.reduce((sum,d)=>sum+d.max,0),100);assert.equal(profile.score,profile.dimensions.reduce((sum,d)=>sum+d.score,0));assert.ok(profile.score>=0&&profile.score<=100);assert.ok(!profile.dimensions.some(d=>d.label.includes("Momentum")));assert.ok(profile.momentum>0)});
+test("five company reports are complete and distinct",()=>{const reports=Object.values(stocks).map(stock=>stock.report.map(s=>s.body).join("|"));assert.equal(new Set(reports).size,5);Object.values(stocks).forEach(stock=>assert.equal(stock.report.length,9))});
+test("v1 data migrates without dropping drafts, trades or journals",()=>{const v1:UserDataV1={version:1,watchlist:[],trades:[{id:1,ticker:"NVDA",buyPrice:100,shares:2,date:"2026-01-01",target:130,maxLoss:10,thesis:"T",invalidation:"I",holding:"6–12 months"}],checklistDrafts:{NVDA:checklist()},journals:{"1":journal(1)}};const v2=migrateV1ToV2(v1);assert.equal(v2.version,2);assert.equal(v2.trades[0].thesis,"T");assert.equal(v2.checklistDrafts.NVDA?.why,checklist().why);assert.equal(v2.account.cashBalance,6000);assert.equal(calculateAvailableCash(v2.account.initialCash,v2.account.transactions),6000)});
+test("storage reads v2, migrates v1 and safely recovers corruption",()=>{const storage=new MemoryStorage();const data=emptyUserData();assert.equal(writeUserData(data,storage),true);assert.equal(readUserData(storage).data.version,2);storage.removeItem(USER_DATA_STORAGE_KEY);storage.setItem(LEGACY_USER_DATA_STORAGE_KEY,JSON.stringify({version:1,watchlist:[],trades:[],checklistDrafts:{},journals:{}}));assert.equal(readUserData(storage).migrated,true);storage.setItem(USER_DATA_STORAGE_KEY,"broken");assert.equal(readUserData(storage).recovered,true)});
+test("mobile navigation includes Insights and narrow screens keep stock price visible",()=>{const app=readFileSync("app/StockPilotApp.tsx","utf8"),css=readFileSync("app/globals.css","utf8");assert.match(app,/mobile-nav[\s\S]*nav\.map/);assert.match(css,/@media\(max-width:420px\)[^{]*\{[^}]*\.stock-heading/);assert.match(css,/\.stock-price\{display:block\}/)});
+test("research API rejects unsupported tickers",async()=>{const response=await GET(new Request("http://local/api/research/XXX"),{params:Promise.resolve({ticker:"XXX"})});assert.equal(response.status,400)});
+test("research API returns schema-validated mock research",async()=>{const response=await GET(new Request("http://local/api/research/NVDA"),{params:Promise.resolve({ticker:"NVDA"})});const body=await response.json();assert.equal(response.status,200);assert.equal(body.sample,true);assert.equal(body.sections.length,9)});
+test("NVDA workflow preserves cash, close result, journal and insights",()=>{const form=checklist({weight:"10"}),plan=planTrade("NVDA",stocks.NVDA.price,10,25000,25000),ready=calculateReadiness(form,plan,25000);assert.equal(ready.isValid,true);const created=trade({id:42,buyPrice:plan.price,shares:plan.shares,actualWeightPercentAtEntry:plan.actualWeightPercent,thesis:form.why,invalidationCondition:form.invalidation,exitPlan:form.exit});const opened=applyPurchase({initialCash:25000,cashBalance:25000,transactions:[]},created);assert.equal(opened.cashBalance,25000-plan.purchaseCost);const closed=closeTrade(opened,[created],42,150,"2026-08-01T00:00:00.000Z");const entries=saveJournalDraft({},42,journal(42,["Poor research"]));assert.equal(summarizeInsights(closed.trades,entries).sampleSize,1);assert.equal(closed.account.cashBalance,25000-plan.purchaseCost+150*plan.shares)});

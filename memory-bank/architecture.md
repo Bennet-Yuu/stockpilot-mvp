@@ -24,3 +24,6 @@
 - 单路由 SPA 状态用于本轮原型，减少部署复杂度；正式 V1 应提供可深链的多路由页面。
 - 不引入图表库，以 CSS 图表降低体积；正式版必须添加无障碍表格替代。
 - 原型不声明持久化能力；未来用 D1，不使用 localStorage 存金融行为记录。
+# 0.2 架构增量（2026-07-13）
+
+详细设计见 `docs/ARCHITECTURE_V2.md`。当前架构新增确定性 Domain Layer（账本、Checklist、Research Profile、Insights、Dashboard、草稿隔离）、版本化 UserRepository、Mock Filing Provider 和 `/api/research/[ticker]` 服务端边界。localStorage schema 已升级到 v2，并提供不丢弃已有记录的 v1 迁移。

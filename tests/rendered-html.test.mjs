@@ -16,7 +16,7 @@ test("renders the StockPilot product shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>StockPilot/);
-  assert.match(html, /Good morning, Demo Investor/);
+  assert.match(html, /Ready to research a company|你好，今天准备研究哪家公司/);
   assert.match(html, /Paper Portfolio/);
   assert.match(html, /Buy Checklist/);
   assert.match(html, /Demo mode/);
@@ -27,7 +27,8 @@ test("renders App Router deep links for the research workflow", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /NVDA/);
-  assert.match(html, /Research Evidence Score/i);
+  assert.match(html, /Research Profile/i);
+  assert.match(html, /Momentum \(excluded\)/i);
   assert.match(html, /Company investor relations/i);
 });
 
@@ -40,5 +41,6 @@ test("renders required guardrails and original-source affordances", async () => 
   assert.match(html, /https:\/\/www\.sec\.gov\/edgar\/search\//);
   assert.match(html, /company investor relations/i);
   assert.doesNotMatch(html, /Strong Buy|Guaranteed Return/i);
+  assert.doesNotMatch(html, /58%|1\.72×|Patterns from 12 simulated/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });

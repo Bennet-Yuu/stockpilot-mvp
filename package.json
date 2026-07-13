@@ -11,6 +11,7 @@
     "start": "vinext start",
     "test": "vinext build && tsx --test tests/unit.test.ts && node --test tests/rendered-html.test.mjs",
     "test:unit": "tsx --test tests/unit.test.ts",
+    "typecheck": "tsc --noEmit --incremental false",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
@@ -40,6 +41,11 @@
     "vinext": "0.0.50",
     "vite": "8.0.13",
     "wrangler": "4.92.0"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.18"
+    }
   },
   "type": "module"
 }

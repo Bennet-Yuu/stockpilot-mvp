@@ -1,0 +1,8 @@
+packages:
+  - "."
+
+minimumReleaseAgeExclude:
+  - postcss@8.5.18
+
+overrides:
+  "next>postcss": "8.5.18"

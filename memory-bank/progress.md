@@ -26,3 +26,13 @@
 - 新增 Filing/User Provider 边界和研究 API Route Handler。
 - 移动端开放 Insights，并改善价格、Watchlist、Portfolio 和 Report 操作。
 - 验证命令：`pnpm --ignore-workspace run lint`、`pnpm --ignore-workspace test`、`pnpm --ignore-workspace run build`。
+
+# 2026-07-13 — StockPilot 0.2 发布前审计
+
+- 修复金额取整、重复平仓、非有限数值、账本交叉校验、损坏 v2 回退 v1、Provider 异常和 localStorage 写入失败反馈。
+- 修复保存语言偏好后的 hydration mismatch，并保留无 API Key 的完整 Demo 启动路径。
+- 补齐 Watchlist 表单标签、Checklist 风险播报区域、移动端品牌标签及关键中英文文案。
+- Insights 仅统计可分析的已结束交易及对应 Journal，不再让无关日志影响结果。
+- 增加独立 `typecheck` 命令；单元测试扩展至 32 项，覆盖账本、迁移、边界值、API 错误和完整 NVDA 流程。
+- 将 Next 间接依赖 PostCSS 固定到已修复版本；生产依赖审计为零已知漏洞。
+- 实际浏览器完成 Dashboard → NVDA → Checklist → 建仓 → 平仓 → Journal → Insights → Dashboard → 刷新持久化流程，并复验 760px、390px、中英文和浅深色模式。

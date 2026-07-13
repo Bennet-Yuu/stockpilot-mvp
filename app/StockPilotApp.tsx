@@ -9,7 +9,7 @@ import { applyPurchase, closeTrade, planTrade, summarizePortfolio } from "./doma
 import { buildDecisionQueue } from "./domain/dashboard";
 import { summarizeInsights, type InsightBucket } from "./domain/insights";
 import { calculateResearchProfile } from "./domain/researchProfile";
-import type { AccountLedger, ChecklistInput as Checklist, JournalRecord, TradeRecord as Trade, WatchlistRecord as WatchItem, WatchStatus, UserData, UserDataV1 } from "./domain/models";
+import type { AccountLedger, ChecklistInput as Checklist, JournalRecord, TradeRecord as Trade, WatchlistRecord as WatchItem, WatchStatus, UserDataV1 } from "./domain/models";
 import { checklistWarningText, type Locale, readLocalePreference, t, translateDom, writeLocalePreference } from "./i18n";
 import { marketDataProvider } from "./providers/marketData";
 import { getBrowserStorage, migrateV1ToV2, readThemePreference, readUserData, writeThemePreference, writeUserData } from "./storage/userData";
@@ -33,6 +33,8 @@ const initialTrades: UserDataV1["trades"] = [
   {id:3,ticker:"AMZN",buyPrice:198.40,shares:4,date:"2026-04-22",target:225,maxLoss:10,thesis:"AWS and ads improve consolidated margins.",invalidation:"AWS growth and margins decline together for two quarters.",holding:"6–12 months",closed:true,sellPrice:212.10},
 ];
 
+const initialUserData=migrateV1ToV2({version:1,watchlist:initialWatchlist,trades:initialTrades,checklistDrafts:{},journals:{}});
+
 const emptyChecklist: Checklist = {why:"",holding:"",invalidation:"",maxLoss:"",weight:"",driver:"",event:"",target:"",exit:""};
 
 function Badge({children,tone="neutral"}:{children:React.ReactNode;tone?:"fact"|"input"|"inference"|"neutral"}) { return <span className={`badge ${tone}`}>{children}</span>; }
@@ -44,40 +46,44 @@ export default function StockPilotApp({ initialView = "dashboard", initialTicker
   const [view,setView]=useState<View>(initialView);
   const [ticker,setTicker]=useState<Ticker>(initialTicker);
   const [query,setQuery]=useState("");
-  const [theme,setTheme]=useState<"light"|"dark">(()=>readThemePreference(getBrowserStorage()));
-  const [locale,setLocale]=useState<Locale>(()=>readLocalePreference(getBrowserStorage()));
-  const [boot] = useState<{data:UserData;hasSavedData:boolean;recovered:boolean;migrated:boolean}>(()=>{
-    const defaults=migrateV1ToV2({version:1,watchlist:initialWatchlist,trades:initialTrades,checklistDrafts:{},journals:{}});
-    if(typeof window==="undefined") return {data:defaults,hasSavedData:false,recovered:false,migrated:false};
-    const storage=getBrowserStorage();
-    const stored=readUserData(storage);
-    return {data:stored.hasSavedData?stored.data:defaults,hasSavedData:stored.hasSavedData,recovered:stored.recovered};
-  });
-  const [watchlist,setWatchlist]=useState<WatchItem[]>(boot.data.watchlist);
-  const [trades,setTrades]=useState<Trade[]>(boot.data.trades);
-  const [account,setAccount]=useState<AccountLedger>(boot.data.account);
-  const [checklistDrafts,setChecklistDrafts]=useState<Partial<Record<Ticker,Checklist>>>(boot.data.checklistDrafts);
-  const [journals,setJournals]=useState<Record<string,JournalRecord>>(boot.data.journals);
+  const [theme,setTheme]=useState<"light"|"dark">("light");
+  const [locale,setLocale]=useState<Locale>("en");
+  const [watchlist,setWatchlist]=useState<WatchItem[]>(initialUserData.watchlist);
+  const [trades,setTrades]=useState<Trade[]>(initialUserData.trades);
+  const [account,setAccount]=useState<AccountLedger>(initialUserData.account);
+  const [checklistDrafts,setChecklistDrafts]=useState<Partial<Record<Ticker,Checklist>>>(initialUserData.checklistDrafts);
+  const [journals,setJournals]=useState<Record<string,JournalRecord>>(initialUserData.journals);
+  const [hydrated,setHydrated]=useState(false);
   const [toast,setToast]=useState("");
   const [researchTab,setResearchTab]=useState<"snapshot"|"report">("snapshot");
   const [journalSaved,setJournalSaved]=useState(false);
   useEffect(()=>{
     const storage=getBrowserStorage();
-    if(!boot.hasSavedData) writeUserData(boot.data,storage);
-    if(boot.recovered) window.setTimeout(()=>setToast("Saved data was unreadable; demo data was restored"),0);
-    else if(boot.migrated) window.setTimeout(()=>setToast("Saved workspace was upgraded to data version 2"),0);
-  },[boot]);
-  useEffect(()=>{ document.documentElement.dataset.theme=theme; writeThemePreference(theme,getBrowserStorage()); },[theme]);
+    const stored=readUserData(storage);
+    const data=stored.hasSavedData?stored.data:initialUserData;
+    const timer=window.setTimeout(()=>{
+      setTheme(readThemePreference(storage));setLocale(readLocalePreference(storage));
+      setWatchlist(data.watchlist);setTrades(data.trades);setAccount(data.account);setChecklistDrafts(data.checklistDrafts);setJournals(data.journals);
+      if(!stored.hasSavedData&&!writeUserData(data,storage)) setToast("Changes could not be saved on this device");
+      if(stored.recovered) setToast("Saved data was unreadable; demo data was restored");
+      else if(stored.migrated) setToast("Saved workspace was upgraded to data version 2");
+      setHydrated(true);
+    },0);
+    return()=>window.clearTimeout(timer);
+  },[]);
+  useEffect(()=>{ document.documentElement.dataset.theme=theme; if(hydrated)writeThemePreference(theme,getBrowserStorage()); },[theme,hydrated]);
   useEffect(()=>{
     document.documentElement.dataset.locale=locale;
-    writeLocalePreference(locale,getBrowserStorage());
+    document.documentElement.lang=locale==="zh"?"zh-CN":"en";
+    if(hydrated)writeLocalePreference(locale,getBrowserStorage());
     const root=document.querySelector<HTMLElement>(".app-shell");
     if(root) translateDom(root,locale);
-  },[locale,view]);
+  },[locale,view,hydrated]);
   useEffect(()=>{
+    if(!hydrated)return;
     const storage=getBrowserStorage();
-    writeUserData({version:2,account,watchlist,trades,checklistDrafts,journals},storage);
-  },[account,watchlist,trades,checklistDrafts,journals]);
+    if(storage&&!writeUserData({version:2,account,watchlist,trades,checklistDrafts,journals},storage)) window.setTimeout(()=>setToast("Changes could not be saved on this device"),0);
+  },[account,watchlist,trades,checklistDrafts,journals,hydrated]);
   useEffect(()=>{ if(!toast)return; const timer=setTimeout(()=>setToast(""),2600); return()=>clearTimeout(timer); },[toast]);
 
   const portfolio=summarizePortfolio(trades,stocks,account);
@@ -96,7 +102,7 @@ export default function StockPilotApp({ initialView = "dashboard", initialTicker
     </aside>
     <main>
       <header className="topbar">
-        <button className="mobile-brand" onClick={()=>navigate("dashboard")}><span className="brand-mark">SP</span></button>
+        <button className="mobile-brand" onClick={()=>navigate("dashboard")} aria-label="StockPilot dashboard"><span className="brand-mark">SP</span></button>
         <div className="global-search">
           <span aria-hidden="true">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search AAPL, MSFT, NVDA, AMZN, TSLA" aria-label="Search stocks" />
           {query&&<div className="search-popover">{searchResults.length?searchResults.map(t=><button key={t} onClick={()=>openStock(t)}><b>{t}</b><span>{stocks[t].name}</span><em><Money value={stocks[t].price}/></em></button>):<p>No supported demo ticker found.</p>}</div>}
@@ -132,14 +138,15 @@ function Dashboard({locale,portfolioValue,pnl,activeTrades,watchlist,drafts,trad
   const results=tickerList.filter(t=>`${t} ${stocks[t].name}`.toLowerCase().includes(heroQuery.toLowerCase()));
   const tasks=buildDecisionQueue(watchlist,drafts,trades,journals);
   const missingJournals=trades.filter(t=>(t.closedAt||t.closed)&&!journals[String(t.id)]).length;
-  const localDate=new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric"}).format(new Date());
+  const [localDate,setLocalDate]=useState("");
+  useEffect(()=>{const timer=window.setTimeout(()=>setLocalDate(new Intl.DateTimeFormat(locale==="zh"?"zh-CN":"en-US",{weekday:"long",month:"long",day:"numeric"}).format(new Date())),0);return()=>window.clearTimeout(timer)},[locale]);
   return <>
     <PageTitle eyebrow={localDate} title={t("dashboard.greeting",locale)} subtitle="Stay focused on your process, not today’s noise."/>
     <section className="hero-search"><div><Badge tone="inference">START A RESEARCH PATH</Badge><h2>What company do you want to understand?</h2><p>Search a supported ticker to review facts, balanced analysis, and risk checks.</p></div><div className="hero-search-box"><span>⌕</span><input value={heroQuery} onChange={e=>setHeroQuery(e.target.value)} placeholder="Search by ticker or company" aria-label="Search a stock from dashboard"/>{heroQuery&&<div className="hero-results">{results.map(t=><button key={t} onClick={()=>openStock(t)}><b>{t}</b><span>{stocks[t].name}</span><em>View research →</em></button>)}</div>}</div><div className="quick-tickers">Popular in demo: {tickerList.map(t=><button key={t} onClick={()=>openStock(t)}>{t}</button>)}</div></section>
     <div className="metric-grid"><Metric label="Paper portfolio" value={<Money value={portfolioValue}/>} delta={`${pnl>=0?"+":"−"}$${Math.abs(pnl).toFixed(2)} unrealized`}/><Metric label="Total return" value={`${pnl>=0?"+":""}${(pnl/Math.max(1,portfolioValue-pnl)*100).toFixed(2)}%`} delta="Open positions only"/><Metric label="Open positions" value={String(activeTrades.length)} delta="Thesis snapshots saved"/><Metric label="Pending reviews" value={String(tasks.length)} delta={`${missingJournals} missing journal${missingJournals===1?"":"s"}`}/></div>
     <div className="two-col dashboard-lower"><section className="card"><div className="section-head"><div><p className="eyebrow">PAPER PORTFOLIO</p><h2>Open positions</h2></div><button className="text-button" onClick={()=>navigate("portfolio")}>View portfolio →</button></div><div className="table-wrap"><table><thead><tr><th>Company</th><th>Value</th><th>Return</th><th>Thesis status</th></tr></thead><tbody>{activeTrades.map(t=>{const current=stocks[t.ticker].price*t.shares,ret=(stocks[t.ticker].price/t.buyPrice-1)*100;return <tr key={t.id} onClick={()=>openStock(t.ticker)}><td><TickerCell ticker={t.ticker}/></td><td><Money value={current}/></td><td className={ret>=0?"positive":"negative"}>{ret>=0?"+":""}{ret.toFixed(1)}%</td><td><Badge tone="inference">{t.invalidationCondition?"Thesis recorded":"Review needed"}</Badge></td></tr>})}</tbody></table></div></section>
       <section className="card decisions"><div className="section-head"><div><p className="eyebrow">NEXT ACTIONS</p><h2>Decision queue</h2></div><span className="count">{tasks.length}</span></div>{tasks.length?tasks.slice(0,5).map(task=><button key={task.id} onClick={()=>task.kind==="journal"?navigate("journal"):task.kind==="checklist"||task.kind==="risk"?navigate("checklist"):task.ticker?openStock(task.ticker):navigate("portfolio")}><span className="decision-icon">{task.kind==="journal"?"✎":task.kind==="price"?"⌁":"✓"}</span><span><b>{task.title}</b><small>{task.detail}</small></span><em>→</em></button>):<div className="empty-inline"><b>No pending process tasks</b><p>New checklist risks and journal gaps will appear here.</p></div>}</section></div>
-    <section className="principle"><span>i</span><div><b>Process reminder</b><p>{t("dashboard.processReminder",locale)} Record what would prove your reasoning wrong before creating a paper trade.</p></div></section>
+    <section className="principle"><span>i</span><div><b>Process reminder</b><p>{t("dashboard.processReminderDetail",locale)}</p></div></section>
   </>;
 }
 
@@ -169,7 +176,21 @@ function PriceTrendChart({stock}:{stock:Stock}){
 function ResearchReport({stock}:{stock:Stock}){return <><section className="report-disclaimer"><b>Demo analysis based on sample data. Not investment advice.</b><p>Sample content · Scenario, not forecast · Requires independent verification.</p></section><div className="report-layout"><aside className="report-index"><p>IN THIS REPORT</p>{stock.report.map((r,i)=><a href={`#report-${i}`} key={r.title}>{String(i+1).padStart(2,"0")} {r.title}</a>)}</aside><article className="report-content">{stock.report.map((r,i)=><details className={`report-section ${r.title==="Bull Scenario"?"bull":r.title==="Bear Scenario"?"bear":""}`} id={`report-${i}`} key={r.title} open={i<2}><summary><span>{String(i+1).padStart(2,"0")}</span><h2>{r.title}</h2></summary><div>{(r.title==="Bull Scenario"||r.title==="Bear Scenario")&&<Badge tone="inference">Scenario, not forecast</Badge>}<p>{r.body}</p></div></details>)}</article></div></>}
 
 function Watchlist({items,setItems,openStock}:{items:WatchItem[];setItems:React.Dispatch<React.SetStateAction<WatchItem[]>>;openStock:(t:Ticker)=>void}){
-  return <><PageTitle eyebrow="IDEA PIPELINE" title="Watchlist" subtitle="Keep curiosity separate from commitment. A watchlist entry is not a recommendation." action={<button className="secondary" onClick={()=>openStock("AAPL")}>＋ Add a stock</button>}/><section className="card"><div className="table-wrap"><table className="watch-table"><thead><tr><th>Company</th><th>Sample price</th><th>Target watch price</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>{items.map((item,index)=><tr key={item.ticker}><td onClick={()=>openStock(item.ticker)}><TickerCell ticker={item.ticker}/></td><td><Money value={stocks[item.ticker].price}/><small className={stocks[item.ticker].change>=0?"positive":"negative"}>{stocks[item.ticker].change>=0?"+":""}{stocks[item.ticker].change}%</small></td><td><label className="inline-money">$<input type="number" value={item.target} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,target:Number(e.target.value)}:x))}/></label></td><td><input className="inline-input" value={item.reason} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,reason:e.target.value}:x))}/></td><td><select value={item.status} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,status:e.target.value as WatchStatus}:x))}><option>Researching</option><option>Watching</option><option>Ready to Buy</option><option>Avoiding</option></select></td><td><button className="ghost" aria-label={`Remove ${item.ticker}`} onClick={()=>setItems(old=>old.filter(x=>x.ticker!==item.ticker))}>×</button></td></tr>)}</tbody></table></div></section><section className="principle"><span>i</span><div><b>About target watch prices</b><p>This is a user-entered reminder, not an automated signal. Recheck the business and valuation before creating any paper trade.</p></div></section></>;
+  return <>
+    <PageTitle eyebrow="IDEA PIPELINE" title="Watchlist" subtitle="Keep curiosity separate from commitment. A watchlist entry is not a recommendation." action={<button className="secondary" onClick={()=>openStock("AAPL")}>＋ Add a stock</button>}/>
+    <section className="card"><div className="table-wrap"><table className="watch-table">
+      <thead><tr><th>Company</th><th>Sample price</th><th>Target watch price</th><th>Reason</th><th>Status</th><th></th></tr></thead>
+      <tbody>{items.map((item,index)=><tr key={item.ticker}>
+        <td><button type="button" onClick={()=>openStock(item.ticker)} aria-label={`Open ${item.ticker} research`} style={{border:0,background:"none",padding:0,textAlign:"left"}}><TickerCell ticker={item.ticker}/></button></td>
+        <td><Money value={stocks[item.ticker].price}/><small className={stocks[item.ticker].change>=0?"positive":"negative"}>{stocks[item.ticker].change>=0?"+":""}{stocks[item.ticker].change}%</small></td>
+        <td><label className="inline-money">$<input aria-label={`${item.ticker} target watch price`} type="number" min="0" value={item.target} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,target:Number(e.target.value)}:x))}/></label></td>
+        <td><input aria-label={`${item.ticker} watch reason`} className="inline-input" value={item.reason} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,reason:e.target.value}:x))}/></td>
+        <td><select aria-label={`${item.ticker} watch status`} value={item.status} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,status:e.target.value as WatchStatus}:x))}><option>Researching</option><option>Watching</option><option>Ready to Buy</option><option>Avoiding</option></select></td>
+        <td><button className="ghost" aria-label={`Remove ${item.ticker}`} onClick={()=>setItems(old=>old.filter(x=>x.ticker!==item.ticker))}>×</button></td>
+      </tr>)}</tbody>
+    </table></div></section>
+    <section className="principle"><span>i</span><div><b>About target watch prices</b><p>This is a user-entered reminder, not an automated signal. Recheck the business and valuation before creating any paper trade.</p></div></section>
+  </>;
 }
 
 function BuyChecklist({locale,ticker,setTicker,drafts,setDrafts,trades,setTrades,account,setAccount,portfolioValue,navigate,notify}:{locale:Locale;ticker:Ticker;setTicker:(t:Ticker)=>void;drafts:Partial<Record<Ticker,Checklist>>;setDrafts:React.Dispatch<React.SetStateAction<Partial<Record<Ticker,Checklist>>>>;trades:Trade[];setTrades:React.Dispatch<React.SetStateAction<Trade[]>>;account:AccountLedger;setAccount:React.Dispatch<React.SetStateAction<AccountLedger>>;portfolioValue:number;navigate:(v:View)=>void;notify:(s:string)=>void}){
@@ -178,6 +199,11 @@ function BuyChecklist({locale,ticker,setTicker,drafts,setDrafts,trades,setTrades
   const plan=planTrade(ticker,stocks[ticker].price,Number(form.weight),portfolioValue,account.cashBalance);
   const readiness=calculateReadiness(form,plan,account.cashBalance); const {score,completedCount:complete,warnings:rawWarnings}=readiness;
   const warnings=rawWarnings.map(w=>({...w,message:checklistWarningText(w.code,w.severity,locale,w.message)}));
+  useEffect(()=>{
+    document.querySelector<HTMLSelectElement>(".checklist-form .section-head select")?.setAttribute("aria-label",locale==="zh"?"检查清单股票代码":"Checklist ticker");
+    const warningRegion=document.querySelector<HTMLElement>(".checklist-side .warnings");
+    warningRegion?.setAttribute("role","status");warningRegion?.setAttribute("aria-live","polite");warningRegion?.setAttribute("aria-atomic","true");
+  },[locale]);
   const create=(e:FormEvent)=>{e.preventDefault();if(score<60||!readiness.isValid){notify(warnings.find(w=>w.severity==="serious")?.message??"Complete every required checklist field before creating a paper trade");return;}const now=new Date().toISOString();const trade:Trade={id:Date.now(),ticker,buyPrice:plan.price,shares:plan.shares,date:now.slice(0,10),intendedWeightPercent:Number(form.weight),actualWeightPercentAtEntry:plan.actualWeightPercent,buyDriver:form.driver,upcomingEventStatus:form.event,targetPrice:Number(form.target),maximumLossPercent:Number(form.maxLoss),thesis:form.why,invalidationCondition:form.invalidation,exitPlan:form.exit,expectedHoldingPeriod:form.holding,checklistScoreAtEntry:score,checklistWarningsAtEntry:warnings.map(w=>({...w})),createdAt:now};try{setAccount(applyPurchase(account,trade));setTrades([...trades,trade]);notify(`Paper trade created with ${plan.shares} sample shares`);navigate("portfolio")}catch{notify("The planned paper trade exceeds available sample cash")}};
   return <><PageTitle eyebrow="DECISION CHECK" title="Buy Checklist" subtitle="Slow the decision down. Write a falsifiable thesis before you simulate a position."/><div className="checklist-layout"><form className="card checklist-form" onSubmit={create}><div className="section-head"><div><p className="eyebrow">USER INPUT</p><h2>Investment plan</h2></div><select value={ticker} onChange={e=>setTicker(e.target.value as Ticker)}>{tickerList.map(t=><option key={t}>{t}</option>)}</select></div><Field label="1. Why am I buying this stock?" hint="Use business evidence, not a price prediction."><textarea value={form.why} onChange={e=>set("why",e.target.value)} placeholder="I believe… because…"/></Field><div className="form-row"><Field label="2. Expected holding period"><select value={form.holding} onChange={e=>set("holding",e.target.value)}><option value="">Select period</option><option>Under 3 months</option><option>3–6 months</option><option>6–12 months</option><option>1–3 years</option><option>3+ years</option></select></Field><Field label="3. Maximum acceptable loss"><div className="suffix-input"><input type="number" min="0" max="100" value={form.maxLoss} onChange={e=>set("maxLoss",e.target.value)} placeholder="10"/><span>%</span></div></Field></div><Field label="4. What would prove my thesis wrong?" hint="Make this observable and specific."><textarea value={form.invalidation} onChange={e=>set("invalidation",e.target.value)} placeholder="My thesis is invalid if…"/></Field><div className="form-row"><Field label="5. Portfolio allocation"><div className="suffix-input"><input type="number" min="0" max="100" value={form.weight} onChange={e=>set("weight",e.target.value)} placeholder="8"/><span>%</span></div></Field><Field label="6. Primary buying driver"><select value={form.driver} onChange={e=>set("driver",e.target.value)}><option value="">Select driver</option><option>Fundamentals</option><option>Recent price movement</option><option>Both</option></select></Field></div><div className="form-row"><Field label="7. Earnings or major event approaching?"><select value={form.event} onChange={e=>set("event",e.target.value)}><option value="">Select answer</option><option>Yes</option><option>No</option><option>Not sure</option></select></Field><Field label="8. Target price"><div className="prefix-input"><span>$</span><input type="number" min="0" value={form.target} onChange={e=>set("target",e.target.value)} placeholder={String(Math.round(stocks[ticker].price*1.15))}/></div></Field></div><Field label="9. What is my exit plan?"><textarea value={form.exit} onChange={e=>set("exit",e.target.value)} placeholder="I will exit or reassess when…"/></Field><button className="primary full" type="submit" disabled={!readiness.isValid||score<60}>Confirm & create paper trade →</button></form><aside className="checklist-side"><section className="card readiness"><p className="eyebrow">SYSTEM CALCULATION</p><div className="readiness-number"><b>{score}</b><span>/100</span></div><h2>{score>=80?"Checklist substantially complete":score>=60?"Review warnings before proceeding":"Needs more thought"}</h2><div className="progress large"><i style={{width:`${score}%`}}/></div><p>{complete} of 9 prompts completed. Score rewards completeness, falsifiability, and conservative risk limits.</p></section><section className={`card warnings ${warnings.length?"has-warnings":""}`}><p className="eyebrow">RISK CHECKS</p><h2>{warnings.length?`${warnings.length} item${warnings.length>1?"s":""} to review`:"No active warnings"}</h2>{warnings.length?<ul>{warnings.map((w,i)=><li key={`${w.code}-${i}`}><b>{w.severity==="serious"?"Blocks trade: ":"Review: "}</b>{w.message}</li>)}</ul>:<p>Your current inputs are within the prototype guardrails.</p>}</section><section className="card confirmation"><p className="eyebrow">CONFIRMATION SUMMARY</p><h3>{ticker} paper trade</h3><dl><dt>Sample price</dt><dd><Money value={plan.price}/></dd><dt>Estimated shares</dt><dd>{plan.shares}</dd><dt>Estimated investment</dt><dd><Money value={plan.purchaseCost}/></dd><dt>Cash after trade</dt><dd><Money value={plan.cashAfter}/></dd><dt>Actual portfolio weight</dt><dd>{plan.actualWeightPercent.toFixed(1)}%</dd><dt>Maximum loss</dt><dd>{form.maxLoss||"—"}%</dd></dl><p><b>Thesis:</b> {form.why||"Not entered"}</p><p><b>Invalidation:</b> {form.invalidation||"Not entered"}</p><p><b>Exit plan:</b> {form.exit||"Not entered"}</p></section></aside></div></>;
 }

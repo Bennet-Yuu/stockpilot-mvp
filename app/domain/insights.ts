@@ -1,7 +1,9 @@
 import type { JournalRecord, TradeRecord } from "./models";
 
 export type InsightBucket={label:string;averageReturn:number;sampleSize:number};
-const returns=(trades:TradeRecord[])=>trades.filter(t=>t.closedAt||t.closed).map(t=>t.realizedReturnPercent??(t.sellPrice?(t.sellPrice/t.buyPrice-1)*100:0));
+const outcome=(trade:TradeRecord)=>Number.isFinite(trade.realizedReturnPercent)?trade.realizedReturnPercent as number:trade.sellPrice?(trade.sellPrice/trade.buyPrice-1)*100:null;
+const analyzable=(trade:TradeRecord)=>Boolean(trade.closedAt||trade.closed)&&outcome(trade)!==null;
+const returns=(trades:TradeRecord[])=>trades.filter(analyzable).map(trade=>outcome(trade) as number);
 export const calculateWinRate=(trades:TradeRecord[])=>{const values=returns(trades);return values.length?values.filter(v=>v>0).length/values.length*100:0};
 export const calculateAverageGain=(trades:TradeRecord[])=>average(returns(trades).filter(v=>v>0));
 export const calculateAverageLoss=(trades:TradeRecord[])=>average(returns(trades).filter(v=>v<0));
@@ -10,7 +12,7 @@ export function calculateMostCommonMistake(journals:Record<string,JournalRecord>
 export const calculatePerformanceByHoldingPeriod=(trades:TradeRecord[])=>bucket(trades,t=>normalizeHolding(t.expectedHoldingPeriod||t.holding||"Unknown"));
 export const calculatePerformanceByPositionSize=(trades:TradeRecord[])=>bucket(trades,t=>{const w=t.actualWeightPercentAtEntry??0;return w<5?"Under 5%":w<=10?"5–10%":w<=20?"10–20%":"Over 20%"});
 export function calculateBestPerformingTicker(trades:TradeRecord[]){const groups=bucket(trades,t=>t.ticker);return groups.sort((a,b)=>b.averageReturn-a.averageReturn)[0]??null}
-export function summarizeInsights(trades:TradeRecord[],journals:Record<string,JournalRecord>){const closed=trades.filter(t=>t.closedAt||t.closed);return{sampleSize:closed.length,winRate:calculateWinRate(closed),averageGain:calculateAverageGain(closed),averageLoss:calculateAverageLoss(closed),profitFactor:calculateProfitFactor(closed),mostCommonMistake:calculateMostCommonMistake(journals),holdingPeriods:calculatePerformanceByHoldingPeriod(closed),positionSizes:calculatePerformanceByPositionSize(closed),bestTicker:closed.length>=5?calculateBestPerformingTicker(closed):null,isSmallSample:closed.length<3}}
-function bucket(trades:TradeRecord[],key:(trade:TradeRecord)=>string):InsightBucket[]{const groups=new Map<string,number[]>();trades.filter(t=>t.closedAt||t.closed).forEach(t=>{const k=key(t),v=t.realizedReturnPercent??(t.sellPrice?(t.sellPrice/t.buyPrice-1)*100:0);groups.set(k,[...(groups.get(k)??[]),v])});return[...groups].map(([label,values])=>({label,averageReturn:average(values),sampleSize:values.length}))}
+export function summarizeInsights(trades:TradeRecord[],journals:Record<string,JournalRecord>){const closed=trades.filter(analyzable);const closedIds=new Set(closed.map(trade=>String(trade.id)));const relevantJournals=Object.fromEntries(Object.entries(journals).filter(([tradeId])=>closedIds.has(tradeId)));const values=returns(closed);return{sampleSize:closed.length,winningCount:values.filter(value=>value>0).length,losingCount:values.filter(value=>value<0).length,winRate:calculateWinRate(closed),averageGain:calculateAverageGain(closed),averageLoss:calculateAverageLoss(closed),profitFactor:calculateProfitFactor(closed),mostCommonMistake:calculateMostCommonMistake(relevantJournals),holdingPeriods:calculatePerformanceByHoldingPeriod(closed),positionSizes:calculatePerformanceByPositionSize(closed),bestTicker:closed.length>=5?calculateBestPerformingTicker(closed):null,isSmallSample:closed.length<3}}
+function bucket(trades:TradeRecord[],key:(trade:TradeRecord)=>string):InsightBucket[]{const groups=new Map<string,number[]>();trades.filter(analyzable).forEach(t=>{const k=key(t),v=outcome(t) as number;groups.set(k,[...(groups.get(k)??[]),v])});return[...groups].map(([label,values])=>({label,averageReturn:average(values),sampleSize:values.length}))}
 const average=(values:number[])=>values.length?values.reduce((a,b)=>a+b,0)/values.length:0;
 const normalizeHolding=(value:string)=>value==="1–3 years"||value==="3+ years"?"1+ years":value;

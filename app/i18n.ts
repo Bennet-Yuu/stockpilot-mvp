@@ -5,6 +5,7 @@ const LOCALE_KEY = "stockpilot-locale";
 export const coreTranslations = {
   "dashboard.greeting": { en: "Ready to research a company?", zh: "你好，今天准备研究哪家公司？" },
   "dashboard.processReminder": { en: "A rising price alone is not an investment thesis.", zh: "股价上涨本身不能构成投资逻辑。" },
+  "dashboard.processReminderDetail": { en: "A rising price alone is not an investment thesis. Record what would prove your reasoning wrong before creating a paper trade.", zh: "股价上涨本身不能构成投资逻辑。创建模拟交易前，请记录什么证据会证明你的判断错误。" },
   "research.coverageExtensive": { en: "Research coverage is extensive", zh: "研究框架覆盖较完整" },
   "research.coverageGaps": { en: "Research coverage has gaps", zh: "研究框架仍有待补充" },
   "checklist.complete": { en: "Checklist substantially complete", zh: "检查项目已基本完成。" },
@@ -23,7 +24,7 @@ export const coreTranslations = {
   "warning.momentum": { en: "Recent price movement alone is not a fundamental thesis.", zh: "近期股价上涨本身不能构成基本面投资逻辑。" },
 } as const;
 export type TranslationKey=keyof typeof coreTranslations;
-export function t(key:TranslationKey,locale:Locale,variables:Record<string,string|number>={}):string{return Object.entries(variables).reduce((value,[name,replacement])=>value.replaceAll(`{${name}}`,String(replacement)),coreTranslations[key][locale])}
+export function t(key:TranslationKey,locale:Locale,variables:Record<string,string|number>={}):string{let value:string=coreTranslations[key][locale];for(const[name,replacement]of Object.entries(variables))value=value.replaceAll(`{${name}}`,String(replacement));return value}
 export function checklistWarningText(code:string,severity:"serious"|"general",locale:Locale,fallback:string):string{const keys:Record<string,TranslationKey>={MISSING_INVALIDATION:"warning.missingInvalidation",MISSING_EXIT_PLAN:"warning.missingExit",HIGH_LOSS_LIMIT:"warning.highLoss",MAJOR_EVENT:"warning.majorEvent",EVENT_UNKNOWN:"warning.eventUnknown",MOMENTUM_CHASING:"warning.momentum",INVALID_NUMBER:"warning.invalidNumber",INVALID_TARGET:"warning.invalidTarget",INSUFFICIENT_CASH:"warning.insufficientCash",ZERO_SHARES:"warning.zeroShares"};if(code==="OVERSIZED_POSITION")return t(severity==="serious"?"warning.oversized":"warning.concentration",locale);return keys[code]?t(keys[code],locale):fallback}
 
 const translations: Record<string, string> = {
@@ -62,6 +63,11 @@ const translations: Record<string, string> = {
   "paper trades": "笔模拟交易",
   "Portfolio value": "组合价值",
   "Unrealized P/L": "未实现盈亏",
+  "Realized P/L": "已实现盈亏",
+  "Weight": "仓位",
+  "on invested capital": "基于已投入资金",
+  "Checklist": "检查清单",
+  "Portfolio": "组合",
   "portfolio weight": "组合权重",
   "Target ": "目标价 ",
   "Max loss ": "最大亏损 ",
@@ -89,6 +95,26 @@ const translations: Record<string, string> = {
   "A rising price is not a thesis. Before creating a paper trade, write down what would prove your reasoning wrong.": "上涨的价格不是投资逻辑。创建模拟交易前，先写下什么证据会证明你的判断错误。",
   "RESEARCH EVIDENCE SCORE": "研究证据评分",
   "SAMPLE MARKET DATA": "模拟市场数据",
+  "✓ On Watchlist": "✓ 已加入自选股",
+  "☆ Add to Watchlist": "☆ 加入自选股",
+  "Start Buy Checklist →": "开始买入检查 →",
+  "RESEARCH PROFILE": "研究档案",
+  "Research coverage is extensive": "研究框架覆盖较完整",
+  "Research coverage has gaps": "研究框架仍有待补充",
+  "Coverage describes the sample research framework, not company quality, expected return, or a buy signal.": "覆盖度描述模拟研究框架的完整性，不代表公司质量、预期收益或买入信号。",
+  "Sample data": "模拟数据",
+  "% today": "% 今日",
+  "As of": "截至",
+  "Growth Durability": "增长持续性",
+  "Valuation Context": "估值背景",
+  "Risk Resilience": "风险韧性",
+  "Research Completeness": "研究完整性",
+  "Momentum (excluded)": "动量（不计入总分）",
+  "Sample price behavior is shown separately and does not affect the core Research Profile.": "模拟价格表现单独展示，不影响核心研究档案评分。",
+  "Meaning:": "含义：",
+  "Supporting metric:": "支持指标：",
+  "Rule:": "计算规则：",
+  "Deterministic calculation": "确定性计算",
   "Source fact": "来源事实",
   "System calculation": "系统计算",
   "Evidence is broadly supportive": "证据整体偏支持",
@@ -223,9 +249,11 @@ const translations: Record<string, string> = {
   "No": "否",
   "Not sure": "不确定",
   "Target price": "目标价格",
+  "8. Target price": "8. 目标价格",
   "What is my exit plan?": "我的退出计划是什么？",
   "I will exit or reassess when…": "当……时，我会退出或重新评估。",
   "Create Paper Trade →": "创建模拟交易 →",
+  "Confirm & create paper trade →": "确认并创建模拟交易 →",
   "SYSTEM CALCULATION": "系统计算",
   "Ready for paper trade": "适合创建模拟交易",
   "Proceed with caution": "谨慎推进",
@@ -233,10 +261,25 @@ const translations: Record<string, string> = {
   "prompts completed. Score rewards completeness, falsifiability, and conservative risk limits.": "项已完成。评分奖励完整性、可证伪性和保守的风险上限。",
   "of 9 prompts completed. Score rewards completeness, falsifiability, and conservative risk limits.": " / 9 项已完成。评分奖励完整性、可证伪性和保守的风险上限。",
   "RISK CHECKS": "风险检查",
+  "Blocks trade:": "阻止交易：",
+  "Review:": "提示：",
   "No active warnings": "暂无风险警告",
   "item to review": "项待检查",
   "items to review": "项待检查",
   "Your current inputs are within the prototype guardrails.": "当前输入在原型的风险边界内。",
+  "CONFIRMATION SUMMARY": "确认摘要",
+  "paper trade": "模拟交易",
+  "Estimated shares": "预计股数",
+  "Estimated investment": "预计投入金额",
+  "Cash after trade": "交易后现金",
+  "Actual portfolio weight": "实际组合仓位",
+  "Maximum loss": "最大亏损",
+  "Thesis:": "投资逻辑：",
+  "Invalidation:": "失效条件：",
+  "Exit plan:": "退出计划：",
+  "Not entered": "未填写",
+  "Review warnings before proceeding": "继续前请复核风险提示",
+  "Checklist substantially complete": "检查清单已基本完成",
   "Data clarity": "数据说明",
   "Fact": "事实",
   "Sample company metrics": "模拟公司指标",
@@ -259,7 +302,6 @@ const translations: Record<string, string> = {
   "Close & reflect": "关闭并复盘",
   "THESIS MONITOR": "投资逻辑监测",
   "What must remain true": "哪些条件必须继续成立",
-  "Invalidation:": "失效条件：",
   "Paper position closed — add your reflection next": "模拟持仓已关闭——下一步添加复盘",
   "LEARN FROM THE PROCESS": "从流程中学习",
   "Separate a good outcome from a good decision. Both deserve an honest review.": "把好结果和好决策分开。两者都值得诚实复盘。",
@@ -365,6 +407,24 @@ export function writeLocalePreference(locale: Locale, storage?: Storage): void {
 
 function translateValue(value: string, locale: Locale): string {
   const trimmed = value.trim();
+  const dynamicPatterns: Array<[RegExp,(match:RegExpMatchArray)=>string]> = locale === "zh" ? [
+    [/^([+−-]?\d+(?:\.\d+)?%) today$/,match=>`${match[1]} 今日`],
+    [/^(\d+(?:\.\d+)?)% on invested capital$/,match=>`${match[1]}%，基于已投入资金`],
+    [/^Patterns from (\d+) closed paper trades\. Reflection only, never a prediction\.$/,match=>`基于 ${match[1]} 笔已结束模拟交易的模式，仅用于复盘，不用于预测。`],
+    [/^(\d+) closed paper trades$/,match=>`${match[1]} 笔已结束模拟交易`],
+    [/^Sample n=(\d+)$/,match=>`样本量 n=${match[1]}`],
+    [/^Tagged in (\d+) journal reflection\.$/,match=>`在 ${match[1]} 篇交易复盘中被标记。`],
+    [/^As of (.+)$/,match=>`截至 ${match[1]}`],
+  ] : [
+    [/^([+−-]?\d+(?:\.\d+)?)% 今日$/,match=>`${match[1]}% today`],
+    [/^(\d+(?:\.\d+)?)%，基于已投入资金$/,match=>`${match[1]}% on invested capital`],
+    [/^基于 (\d+) 笔已结束模拟交易的模式，仅用于复盘，不用于预测。$/,match=>`Patterns from ${match[1]} closed paper trades. Reflection only, never a prediction.`],
+    [/^(\d+) 笔已结束模拟交易$/,match=>`${match[1]} closed paper trades`],
+    [/^样本量 n=(\d+)$/,match=>`Sample n=${match[1]}`],
+    [/^在 (\d+) 篇交易复盘中被标记。$/,match=>`Tagged in ${match[1]} journal reflection.`],
+    [/^截至 (.+)$/,match=>`As of ${match[1]}`],
+  ];
+  for(const [pattern,replace] of dynamicPatterns){const match=trimmed.match(pattern);if(match){const start=value.indexOf(trimmed);const translatedValue=replace(match);return `${value.slice(0,start)}${translatedValue}${value.slice(start+trimmed.length)}`}}
   const translated = locale === "zh" ? translations[trimmed] : reverseTranslations[trimmed];
   if (translated) {
     const start = value.indexOf(trimmed);
@@ -373,7 +433,7 @@ function translateValue(value: string, locale: Locale): string {
   // Some labels contain a live number (for example, a P/L amount). Replace
   // known phrases inside the text so those dynamic values still localize.
   const pairs = locale === "zh" ? Object.entries(translations) : Object.entries(reverseTranslations);
-  return pairs.reduce((current, [from, to]) => from.length > 2 ? current.split(from).join(to) : current, value);
+  return pairs.reduce((current, [from, to]) => from.length > 2 && (locale==="en"||/\s/.test(from)||/[/:·]/.test(from)) ? current.split(from).join(to) : current, value);
 }
 
 export function translateDom(root: Element, locale: Locale): void {

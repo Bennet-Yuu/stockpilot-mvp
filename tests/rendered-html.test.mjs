@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-async function render() {
+async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
-  return worker.fetch(new Request("http://localhost/", { headers: { accept: "text/html" } }), {
+  return worker.fetch(new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }), {
     ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
   }, { waitUntil() {}, passThroughOnException() {} });
 }
@@ -20,6 +20,15 @@ test("renders the StockPilot product shell", async () => {
   assert.match(html, /Paper Portfolio/);
   assert.match(html, /Buy Checklist/);
   assert.match(html, /Demo mode/);
+});
+
+test("renders App Router deep links for the research workflow", async () => {
+  const response = await render("/stocks/NVDA");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /NVDA/);
+  assert.match(html, /Research Evidence Score/i);
+  assert.match(html, /Company investor relations/i);
 });
 
 test("renders required guardrails and original-source affordances", async () => {

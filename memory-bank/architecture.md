@@ -3,12 +3,17 @@
 ## 当前原型
 
 - `app/page.tsx`：Server Component 页面入口与元数据。
-- `app/StockPilotApp.tsx`：Client Component，承载应用壳、七个工作区、交互状态与派生计算。
+- `app/StockPilotApp.tsx`：Client Component，承载应用壳、七个工作区和路由跳转；状态通过 storage module 恢复。
 - `app/data.ts`：五只股票的版本化模拟 fixture 与类型。
 - `app/globals.css`：视觉令牌、组件样式、浅/深主题和响应式规则。
+- `app/domain/`：Evidence Score、Buy Readiness、组合派生值与持久化模型。
+- `app/providers/`：MockMarketDataProvider、MockResearchProvider；未来可替换服务端数据源。
+- `app/storage/userData.ts`：Zod schema、版本化 localStorage、主题偏好和损坏数据回退。
+- `app/stocks/[ticker]`、`app/checklist/[ticker]`、`app/watchlist`、`app/paper-trades`、`app/journal`、`app/insights`：App Router 深链接页面。
 - `tests/rendered-html.test.mjs`：生产 Worker 的 SSR HTML 产品护栏。
+- `tests/unit.test.ts`：评分、警告、组合、Provider、存储和关键流程单元测试。
 
-当前单文件客户端是为了快速交互原型；工程化第一步必须按页面拆分组件，把 Evidence Score、Readiness、组合和 Insights 计算移到 `domain/` 纯函数。
+当前页面仍共享一个客户端应用壳以保持原型体验；页面级深链接已存在，下一步可继续拆成独立 UI 组件，不应把领域规则放回组件。
 
 ## 目标分层
 

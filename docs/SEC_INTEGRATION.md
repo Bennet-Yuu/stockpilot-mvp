@@ -23,7 +23,7 @@
 1. 每次请求带真实联系信息的 `User-Agent`、`Accept: application/json` 和 `Accept-Encoding`。
 2. 缺少 `SEC_USER_AGENT` 时不发请求，返回 `not-configured` sample fallback。
 3. 内存滑动窗口限速，默认 5 req/s，配置被限制在 1–10 req/s。
-4. 10 秒超时、响应大小上限（默认 2 MB）、状态码和 JSON 解析保护。
+4. 10 秒超时、响应大小上限（默认 8 MB）、状态码和 JSON 解析保护。
 5. 429、5xx、timeout/network 最多重试 2 次；403 不重试；错误为 typed `SecProviderError`，route 不向用户泄露 stack。
 
 ## 缓存和 fallback
@@ -51,5 +51,5 @@
 - FCF 仅在 OCF 与 CapEx 的单位、期间起止日、财年和财季完全兼容时计算。当前只接受同一规范化单位（通常是 USD），不会把 shares 或 USDm 静默换算为 USD；缺少来源时显示 Unavailable，不填 0。
 - 每个 source fact 和 system-derived FCF 都返回 `provenanceType`、单位、期间、提交日期、form、accession 和 source URL。UI 使用 `SEC source`、`SEC cached`、`Stale SEC cache`、`Sample fallback` 标签。
 - 三个 SEC API route 都返回 `ticker`、`sourceMode`、`status`、`fetchedAt`、`asOf`、`warnings` 以及对应数据，并在返回前执行 Zod 校验。
-- 响应大小上限默认 2 MB；HTTP client 读取流时一旦超过上限即取消 reader，避免先把超大响应完整读入内存。
+- 响应大小上限默认 8 MB；HTTP client 读取流时一旦超过上限即取消 reader，避免先把超大响应完整读入内存。该上限覆盖当前五只演示股票的 SEC companyfacts payload，并可通过 `SEC_MAX_RESPONSE_BYTES` 下调。
 - 普通 `pnpm test` 永远离线。只有明确执行 `pnpm test:sec-live` 才会访问 SEC；它要求 `.env.local` 中是真实、可联系的 User-Agent 邮箱，缺少时以非零状态跳过，不伪造通过。

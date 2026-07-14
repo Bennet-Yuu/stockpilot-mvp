@@ -5,7 +5,7 @@ import { FetchSecHttpClient } from "../app/providers/sec/client";
 import { MemorySecCache } from "../app/providers/sec/cache";
 import { createSecProvider } from "../app/providers/sec/provider";
 import { normalizeFinancials, normalizeSnapshot } from "../app/providers/sec/normalize";
-import { secCompanyFinancialSnapshotSchema, secCompanyIdentityResponseSchema, secRecentFilingsResponseSchema } from "../app/providers/sec/schemas";
+import { secCompanyFinancialSnapshotSchema, secCompanyIdentityResponseSchema, secRecentFilingsResponseSchema, secSubmissionsSchema } from "../app/providers/sec/schemas";
 import { cikForTicker, normalizeSecTicker, secArchiveUrl, secTickerMap } from "../app/providers/sec/tickerMap";
 import type { SecHttpClient } from "../app/providers/sec/types";
 import { createSecFilingsResponse, createSecIdentityResponse, createSecSnapshotResponse } from "../app/api/sec/response";
@@ -35,6 +35,16 @@ test("normalizer selects annual facts, keeps amended filing provenance and deriv
   assert.equal(snapshot.annualHistory[0]?.revenue?.value, 391035);
   assert.equal(snapshot.annualHistory[0]?.operatingCashFlow?.value, 118254);
   assert.equal(secCompanyFinancialSnapshotSchema.safeParse(snapshot).success, true);
+});
+
+test("SEC submissions normalizes numeric XBRL flags from the live API", () => {
+  const parsed = secSubmissionsSchema.safeParse({
+    cik: "0000320193",
+    name: "Example, Inc.",
+    filings: { recent: { accessionNumber: [], filingDate: [], reportDate: [], form: [], primaryDocument: [], isXBRL: [1, 0, true, false, null] } },
+  });
+  assert.equal(parsed.success, true);
+  if (parsed.success) assert.deepEqual(parsed.data.filings.recent.isXBRL, [true, false, true, false, undefined]);
 });
 
 type RawFactInput = { accn: string; form: string; filed: string; end: string; val: number; start?: string; fy?: number; fp?: string };

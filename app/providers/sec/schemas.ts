@@ -1,13 +1,22 @@
 import { z } from "zod";
 import type { SecFactProvenanceType, SecMetricName, SecPeriodKind, SecSourceMode, SecSnapshotStatus } from "./types";
 
+const secBooleanFlagSchema = z.preprocess((value) => {
+  if (value === 0) return false;
+  if (value === 1) return true;
+  if (value === null) return undefined;
+  return value;
+}, z.boolean().optional());
+const secOptionalStringSchema = z.preprocess((value) => value === null ? undefined : value, z.string().optional());
+const secOptionalNumberSchema = z.preprocess((value) => value === null ? undefined : value, z.number().optional());
+
 export const secSubmissionRecentSchema = z.object({
   accessionNumber: z.array(z.string()).default([]),
   filingDate: z.array(z.string()).default([]),
-  reportDate: z.array(z.string().optional()).default([]),
+  reportDate: z.array(secOptionalStringSchema).default([]),
   form: z.array(z.string()).default([]),
   primaryDocument: z.array(z.string()).default([]),
-  isXBRL: z.array(z.boolean().optional()).default([]),
+  isXBRL: z.array(secBooleanFlagSchema).default([]),
 }).passthrough();
 
 export const secSubmissionsSchema = z.object({
@@ -23,19 +32,19 @@ export const secSubmissionsSchema = z.object({
 
 export const secRawFactSchema = z.object({
   accn: z.string(),
-  fy: z.number().optional(),
-  fp: z.string().optional(),
+  fy: secOptionalNumberSchema,
+  fp: secOptionalStringSchema,
   form: z.string(),
   filed: z.string(),
-  frame: z.string().optional(),
-  start: z.string().optional(),
+  frame: secOptionalStringSchema,
+  start: secOptionalStringSchema,
   end: z.string(),
   val: z.number(),
 }).passthrough();
 
 export const secConceptSchema = z.object({
-  label: z.string().optional(),
-  description: z.string().optional(),
+  label: secOptionalStringSchema,
+  description: secOptionalStringSchema,
   units: z.record(z.string(), z.array(secRawFactSchema)),
 }).passthrough();
 

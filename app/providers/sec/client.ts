@@ -26,7 +26,7 @@ export function getSecRuntimeConfig(env: NodeJS.ProcessEnv = process.env): SecRu
     requestsPerSecond,
     cacheTtlSeconds,
     timeoutMs: Math.max(1000, Math.floor(numericEnv(env, "SEC_TIMEOUT_MS", 10000))),
-    maxResponseBytes: Math.max(100_000, Math.floor(numericEnv(env, "SEC_MAX_RESPONSE_BYTES", 2_000_000))),
+    maxResponseBytes: Math.max(100_000, Math.floor(numericEnv(env, "SEC_MAX_RESPONSE_BYTES", 8_000_000))),
     maxRetries: 2,
   };
 }

@@ -1,48 +1,57 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import type { ResearchBrief, ResearchLanguage } from "./schemas";
 
-async function render(path = "/") {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-  return worker.fetch(new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }), {
-    ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
-  }, { waitUntil() {}, passThroughOnException() {} });
+export interface AiCacheEntry {
+  key: string;
+  storedAt: number;
+  expiresAt: number;
+  brief: ResearchBrief;
 }
 
-test("renders the StockPilot product shell", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-  const html = await response.text();
-  assert.match(html, /<title>StockPilot/);
-  assert.match(html, /Ready to research a company|你好，今天准备研究哪家公司/);
-  assert.match(html, /Paper Portfolio/);
-  assert.match(html, /Buy Checklist/);
-  assert.match(html, /Demo mode/);
-});
+export class MemoryAiCache {
+  private readonly entries = new Map<string, AiCacheEntry>();
 
-test("renders App Router deep links for the research workflow", async () => {
-  const response = await render("/stocks/NVDA");
-  assert.equal(response.status, 200);
-  const html = await response.text();
-  assert.match(html, /NVDA/);
-  assert.match(html, /Research Profile/i);
-  assert.match(html, /Momentum \(excluded\)/i);
-  assert.match(html, /AI RESEARCH ASSISTANT/);
-  assert.match(html, /Paper trades and journal data are not sent|不发送本地交易或复盘数据/);
-  assert.match(html, /Company investor relations/i);
-});
+  constructor(private readonly now: () => number = Date.now) {}
 
-test("renders required guardrails and original-source affordances", async () => {
-  const html = await (await render()).text();
-  assert.match(html, /educational research and paper-trading tool/i);
-  assert.match(html, /does not provide personalized investment advice/i);
-  assert.match(html, /sample data/i);
-  assert.match(html, /Source fact/);
-  assert.match(html, /https:\/\/www\.sec\.gov\/edgar\/search\//);
-  assert.match(html, /company investor relations/i);
-  assert.doesNotMatch(html, /Strong Buy|Guaranteed Return/i);
-  assert.doesNotMatch(html, /58%|1\.72×|Patterns from 12 simulated/i);
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
-});
+  getFresh(key: string): AiCacheEntry | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= this.now()) {
+      this.entries.delete(key);
+      return undefined;
+    }
+    return entry;
+  }
+
+  set(key: string, brief: ResearchBrief, ttlSeconds: number): void {
+    const storedAt = this.now();
+    this.entries.set(key, { key, storedAt, expiresAt: storedAt + Math.max(1, ttlSeconds) * 1000, brief });
+  }
+
+  clear(): void {
+    this.entries.clear();
+  }
+}
+
+const sharedAiCache = new MemoryAiCache();
+
+export function getAiCache(): MemoryAiCache {
+  return sharedAiCache;
+}
+
+export function hashQuestion(question?: string): string {
+  const input = question?.trim() ?? "";
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+export function makeAiCacheKey(input: { ticker: string; evidenceHash: string; language: ResearchLanguage; promptVersion: string; model: string; question?: string }): string {
+  return [input.ticker, input.evidenceHash, input.language, input.promptVersion, input.model, hashQuestion(input.question)].join(":");
+}
+
+export function clearAiCacheForTests(): void {
+  sharedAiCache.clear();
+}

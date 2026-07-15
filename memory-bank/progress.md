@@ -20,6 +20,14 @@
 - [x] lint/typecheck/test/build 通过；`pnpm audit --audit-level high` 通过（仍有 1 个 moderate、1 个 low 的开发工具链 esbuild 提示）；browser smoke 和敏感文件审计通过。
 - [ ] 提交并推送 feature 分支。
 
+## 0.4 Source-Grounded AI Research Assistant（进行中）
+
+- [x] 独立 feature branch、AI runtime allowlist 和 Worker request-time 注入。
+- [x] SEC-only Evidence Bundle、evidence hash、deterministic financial trends 和 provenance sourceId。
+- [x] OpenAI Responses Structured Outputs、Zod schema、grounding validator、cache、rate limiter 和 safe health route。
+- [x] 股票详情页独立 AI panel，支持中英文、无 key fallback、来源引用、loading/error aria 状态和移动端布局。
+- [x] 离线 AI/SEC/ledger 回归测试已加入；live AI smoke 仍需有真实服务器 secret 时显式运行。
+
 ### 0.3 发布前加固（本轮）
 
 - [x] 严格过滤受支持表单、同期间修订优先级、跨年度 concept fallback 和无重复年度期间。

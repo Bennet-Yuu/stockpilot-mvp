@@ -29,6 +29,12 @@ interface Env {
   SEC_CACHE_TTL_SECONDS?: string;
   SEC_TIMEOUT_MS?: string;
   SEC_MAX_RESPONSE_BYTES?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+  OPENAI_TIMEOUT_MS?: string;
+  OPENAI_MAX_OUTPUT_TOKENS?: string;
+  AI_CACHE_TTL_SECONDS?: string;
+  AI_REQUESTS_PER_MINUTE?: string;
 }
 
 interface ExecutionContext {
@@ -63,6 +69,12 @@ const worker = {
       SEC_CACHE_TTL_SECONDS: env.SEC_CACHE_TTL_SECONDS,
       SEC_TIMEOUT_MS: env.SEC_TIMEOUT_MS,
       SEC_MAX_RESPONSE_BYTES: env.SEC_MAX_RESPONSE_BYTES,
+      OPENAI_API_KEY: env.OPENAI_API_KEY,
+      OPENAI_MODEL: env.OPENAI_MODEL,
+      OPENAI_TIMEOUT_MS: env.OPENAI_TIMEOUT_MS,
+      OPENAI_MAX_OUTPUT_TOKENS: env.OPENAI_MAX_OUTPUT_TOKENS,
+      AI_CACHE_TTL_SECONDS: env.AI_CACHE_TTL_SECONDS,
+      AI_REQUESTS_PER_MINUTE: env.AI_REQUESTS_PER_MINUTE,
     }, "cloudflare");
     return handler.fetch(request, env, ctx);
   },

@@ -9,9 +9,10 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "vinext build && tsx --test tests/unit.test.ts tests/sec.test.ts tests/runtime-config.test.ts && node --test tests/rendered-html.test.mjs",
-    "test:unit": "tsx --test tests/unit.test.ts tests/sec.test.ts tests/runtime-config.test.ts",
+    "test": "vinext build && tsx --test tests/unit.test.ts tests/sec.test.ts tests/runtime-config.test.ts tests/ai.test.ts && node --test tests/rendered-html.test.mjs",
+    "test:unit": "tsx --test tests/unit.test.ts tests/sec.test.ts tests/runtime-config.test.ts tests/ai.test.ts",
     "test:sec-live": "tsx scripts/test-sec-live.ts",
+    "test:ai-live": "tsx scripts/test-ai-live.ts",
     "typecheck": "tsc --noEmit --incremental false",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
@@ -19,6 +20,7 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "openai": "^6.46.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "recharts": "3.9.2",

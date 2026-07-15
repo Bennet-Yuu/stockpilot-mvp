@@ -20,3 +20,9 @@ SEC identity/facts/filings 是 source evidence；Watchlist、Checklist、Paper T
 ## verification
 
 SEC fixtures 和 fake transport 让测试离线且可重复。没有 `SEC_USER_AGENT` 时 smoke path 必须显示 sample/not-configured，build 不依赖网络或 API key。所有用户数据仍由 localStorage v2 Zod repository 管理。
+
+## 0.4 AI boundary
+
+AI Research Assistant 只从 server-side SEC snapshot 构建 `ResearchEvidenceBundle`。`app/providers/ai/evidence.ts` 是无副作用的纯函数；`client.ts` 是唯一 OpenAI SDK 入口；`grounding.ts` 在输出进入 UI 或 cache 前执行 sourceId、金额、年份、ticker、URL、禁止内容和 FCF system-derived 校验。AI provider 没有任何 ledger、portfolio、checklist、journal 或 localStorage 依赖。
+
+Worker 通过 `serverRuntimeConfig` 在 request time 注入 AI allowlist（API key、model、timeout、output limit、cache TTL、rate limit），不会把整个 Worker env 传入应用。没有 API key 时 provider 不发请求，UI 显示 rules-based fallback；sample SEC sourceMode 永远不会进入 AI。

@@ -73,3 +73,11 @@ memory-bank/      é¡¹ç›®è¿›åº¦ä¸Žæž¶æž„è®°å¿†
 ## å…è´£å£°æ˜Ž
 
 StockPilot is an educational research and paper-trading tool. It does not provide financial advice, personalized recommendations, guaranteed returns, or real trade execution. SEC facts are public source evidence and do not constitute a buy or sell signal.
+
+## 0.4 Source-grounded AI Research Assistant
+
+Stock detail pages now include an optional, user-triggered `AI Research Assistant`. It uses only eligible SEC identity/facts, deterministic annual trends, filing metadata, the selected language, and an optional question up to 500 characters. It never receives Paper Trades, Portfolio, Checklist, Journal, Insights, Watchlist, localStorage, prices, secrets, or browser identifiers.
+
+The server uses the official OpenAI Responses API with Structured Outputs (`responses.parse` + `zodTextFormat`) and `store:false`. Every factual claim must cite an Evidence Bundle source and passes deterministic grounding checks before it is displayed. The assistant does not provide ratings, trading instructions, price targets, forecasts, expected returns, or personalized advice. See `docs/AI_RESEARCH_ASSISTANT.md`, `docs/AI_DATA_CONTRACT.md`, and `docs/AI_SAFETY_BOUNDARIES.md`.
+
+Without `OPENAI_API_KEY`, the app remains fully usable, SEC fallback behavior is unchanged, and the panel shows `Not configured` with clearly marked rules-based questions. Configure AI only in the server environment; never commit `.env.local` or expose the key to the browser.

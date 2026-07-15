@@ -29,6 +29,8 @@ test("renders App Router deep links for the research workflow", async () => {
   assert.match(html, /NVDA/);
   assert.match(html, /Research Profile/i);
   assert.match(html, /Momentum \(excluded\)/i);
+  assert.match(html, /AI RESEARCH ASSISTANT/);
+  assert.match(html, /Paper trades and journal data are not sent|不发送本地交易或复盘数据/);
   assert.match(html, /Company investor relations/i);
 });
 

@@ -53,3 +53,11 @@ Stock detail 将 SEC panel 放在 Sample fundamentals 之后，保留 Research P
 发布前验证由 `.github/workflows/ci.yml` 固定为 pnpm frozen lockfile、lint、strict typecheck、离线 test、production build 和 production dependency audit。CI 不注入 SEC User-Agent，也不会执行 live smoke。
 
 `pnpm test:sec-live` 是显式、人工触发的五 ticker 验证命令；它只输出状态、内容长度/读取字节数和不可用计数，不打印 User-Agent 或完整 SEC JSON。没有真实联系邮箱时命令明确退出为 skipped，必须由部署环境补充后再运行。
+
+## 0.4 AI provider boundary
+
+`app/providers/ai/` 是独立的 server-side research layer。`evidence.ts` 从 SEC snapshot 纯函数构建 `ResearchEvidenceBundle`；它拒绝 sample/unavailable sourceMode，只保留 available facts、deterministic trends、filing metadata 和唯一 `sourceId`。`client.ts` 是唯一 OpenAI SDK 入口，使用 Responses API Structured Outputs、`store:false`、固定 timeout 和有限重试；`provider.ts` 不被 UI 直接调用，route 只通过 `ResearchAssistantProvider` 接口调用。
+
+`grounding.ts` 在 Zod 解析后检查引用存在性、同 ticker、SEC URL、金额/年份、禁止内容和 system-derived FCF provenance。失败结果不进入 cache，也不返回部分文本。`cache.ts` 使用 ticker/evidenceHash/language/promptVersion/model/question hash；`rateLimit.ts` 是 Worker isolate 内存中的成本保护，不是认证边界。
+
+`/api/ai/research/:ticker` 只接受语言、500 字符以内问题和 regenerate 标记；`/api/ai/health` 只返回安全诊断。Worker 通过 `setServerRuntimeConfig` 在 request time 注入 AI allowlist，绝不把整个 env 传入应用。AI 结果与 SEC panel、Sample market、Research Profile、账本、Checklist、Journal 和 Insights 在 UI 与数据层保持分离。

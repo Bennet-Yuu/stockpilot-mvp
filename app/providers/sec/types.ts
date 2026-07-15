@@ -1,4 +1,5 @@
 import type { Ticker } from "../../data";
+import type { SecDiagnosticCode } from "./errors";
 
 export type SecSourceMode = "live" | "cached" | "stale-cache" | "sample" | "unavailable";
 export type SecSnapshotStatus =
@@ -99,6 +100,7 @@ export interface SecSnapshotMetadata {
   fetchedAt: string;
   asOf: string;
   warnings: string[];
+  diagnosticCode?: SecDiagnosticCode;
 }
 
 export interface SecCompanyIdentityResponse extends SecSnapshotMetadata {
@@ -124,6 +126,7 @@ export interface SecCompanyFinancialSnapshot {
   fetchedAt: string;
   asOf: string;
   warnings: string[];
+  diagnosticCode?: SecDiagnosticCode;
 }
 
 export interface SecCacheEntry<T> {

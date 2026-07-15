@@ -1,6 +1,18 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { setServerRuntimeConfig } from "../app/runtime/serverRuntimeConfig";
+
+// Some local Miniflare/edge previews do not expose WeakRef even though the
+// React Server Components runtime expects it. Keep a strong-reference shim
+// for that preview only; real Worker runtimes use their native implementation.
+if (typeof globalThis.WeakRef === "undefined") {
+  class StrongReference<T extends object> {
+    constructor(private readonly target: T) {}
+    deref(): T | undefined { return this.target; }
+  }
+  globalThis.WeakRef = StrongReference as unknown as typeof WeakRef;
+}
 
 interface Env {
   ASSETS: Fetcher;
@@ -12,6 +24,11 @@ interface Env {
       };
     };
   };
+  SEC_USER_AGENT?: string;
+  SEC_REQUESTS_PER_SECOND?: string;
+  SEC_CACHE_TTL_SECONDS?: string;
+  SEC_TIMEOUT_MS?: string;
+  SEC_MAX_RESPONSE_BYTES?: string;
 }
 
 interface ExecutionContext {
@@ -40,6 +57,13 @@ const worker = {
       }, allowedWidths);
     }
 
+    setServerRuntimeConfig({
+      SEC_USER_AGENT: env.SEC_USER_AGENT,
+      SEC_REQUESTS_PER_SECOND: env.SEC_REQUESTS_PER_SECOND,
+      SEC_CACHE_TTL_SECONDS: env.SEC_CACHE_TTL_SECONDS,
+      SEC_TIMEOUT_MS: env.SEC_TIMEOUT_MS,
+      SEC_MAX_RESPONSE_BYTES: env.SEC_MAX_RESPONSE_BYTES,
+    }, "cloudflare");
     return handler.fetch(request, env, ctx);
   },
 };

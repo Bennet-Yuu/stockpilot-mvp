@@ -1,38 +1,38 @@
 # StockPilot
 
-StockPilot 是面向美股新手的研究、买入检查、模拟交易和交易复盘 Web 应用。它帮助用户写下可验证的投资逻辑、检查风险并观察过程，不连接真实券商、不使用真实资金、不自动下单，也不提供个性化投资建议或价格预测。
+StockPilot æ˜¯é¢å‘ç¾Žè‚¡æ–°æ‰‹çš„ç ”ç©¶ã€ä¹°å…¥æ£€æŸ¥ã€æ¨¡æ‹Ÿäº¤æ˜“å’Œäº¤æ˜“å¤ç›˜ Web åº”ç”¨ã€‚å®ƒå¸®åŠ©ç”¨æˆ·å†™ä¸‹å¯éªŒè¯çš„æŠ•èµ„é€»è¾‘ã€æ£€æŸ¥é£Žé™©å¹¶è§‚å¯Ÿè¿‡ç¨‹ï¼Œä¸è¿žæŽ¥çœŸå®žåˆ¸å•†ã€ä¸ä½¿ç”¨çœŸå®žèµ„é‡‘ã€ä¸è‡ªåŠ¨ä¸‹å•ï¼Œä¹Ÿä¸æä¾›ä¸ªæ€§åŒ–æŠ•èµ„å»ºè®®æˆ–ä»·æ ¼é¢„æµ‹ã€‚
 
-## 0.3 新增
+## 0.3 æ–°å¢ž
 
-股票详情页现在有独立的 **SEC Source Facts** 面板：
+è‚¡ç¥¨è¯¦æƒ…é¡µçŽ°åœ¨æœ‰ç‹¬ç«‹çš„ **SEC Source Facts** é¢æ¿ï¼š
 
-- 服务端读取 SEC 官方 submissions 和 XBRL Company Facts。
-- 身份、CIK、SIC、最新 10-K/10-Q/8-K、年度五年事实、filed/as-of 和原始来源链接均可追溯。
-- Revenue、Operating Income、Net Income、OCF、CapEx、FCF、Assets、Liabilities、Cash、Diluted EPS 逐项显示；缺失值为 `Unavailable`，不会填 0。
-- FCF 明确按同一年度 `Operating Cash Flow - Capital Expenditure` 计算并保留两条来源。
-- User-Agent、限速、超时、响应大小、schema、重试、TTL/stale cache 和安全 fallback 均在 server provider 中实现。
-- 没有 `SEC_USER_AGENT` 时不发 SEC 请求，仍完整运行 Sample Demo。
+- æœåŠ¡ç«¯è¯»å– SEC å®˜æ–¹ submissions å’Œ XBRL Company Factsã€‚
+- èº«ä»½ã€CIKã€SICã€æœ€æ–° 10-K/10-Q/8-Kã€å¹´åº¦äº”å¹´äº‹å®žã€filed/as-of å’ŒåŽŸå§‹æ¥æºé“¾æŽ¥å‡å¯è¿½æº¯ã€‚
+- Revenueã€Operating Incomeã€Net Incomeã€OCFã€CapExã€FCFã€Assetsã€Liabilitiesã€Cashã€Diluted EPS é€é¡¹æ˜¾ç¤ºï¼›ç¼ºå¤±å€¼ä¸º `Unavailable`ï¼Œä¸ä¼šå¡« 0ã€‚
+- FCF æ˜Žç¡®æŒ‰åŒä¸€å¹´åº¦ `Operating Cash Flow - Capital Expenditure` è®¡ç®—å¹¶ä¿ç•™ä¸¤æ¡æ¥æºã€‚
+- User-Agentã€é™é€Ÿã€è¶…æ—¶ã€å“åº”å¤§å°ã€schemaã€é‡è¯•ã€TTL/stale cache å’Œå®‰å…¨ fallback å‡åœ¨ server provider ä¸­å®žçŽ°ã€‚
+- æ²¡æœ‰ `SEC_USER_AGENT` æ—¶ä¸å‘ SEC è¯·æ±‚ï¼Œä»å®Œæ•´è¿è¡Œ Sample Demoã€‚
 
-SEC 面板与 Sample market、Research Profile、Paper Portfolio、Checklist、Journal 和 Insights 隔离；SEC facts 不影响模拟价格、评分或交易数量。
+SEC é¢æ¿ä¸Ž Sample marketã€Research Profileã€Paper Portfolioã€Checklistã€Journal å’Œ Insights éš”ç¦»ï¼›SEC facts ä¸å½±å“æ¨¡æ‹Ÿä»·æ ¼ã€è¯„åˆ†æˆ–äº¤æ˜“æ•°é‡ã€‚
 
-## 启动
+## å¯åŠ¨
 
-需要 Node.js 22.13+。当前 Codex 运行时若没有全局 npm，可用等价的 `pnpm --ignore-workspace` 命令。
+éœ€è¦ Node.js 22.13+ã€‚å½“å‰ Codex è¿è¡Œæ—¶è‹¥æ²¡æœ‰å…¨å±€ npmï¼Œå¯ç”¨ç­‰ä»·çš„ `pnpm --ignore-workspace` å‘½ä»¤ã€‚
 
 ```bash
 npm install
 npm run dev
 ```
 
-浏览器打开终端显示的地址，通常为 <http://localhost:3000>。
+æµè§ˆå™¨æ‰“å¼€ç»ˆç«¯æ˜¾ç¤ºçš„åœ°å€ï¼Œé€šå¸¸ä¸º <http://localhost:3000>ã€‚
 
-本地开发默认使用 vinext Node SSR 运行器，便于 server-only SEC provider 进行 live 验证；生产构建仍保留 Cloudflare Worker 插件。若需要本地 Worker 预览，可设置 `STOCKPILOT_CLOUDFLARE_DEV=1`。
+æœ¬åœ°å¼€å‘é»˜è®¤ä½¿ç”¨ vinext Node SSR è¿è¡Œå™¨ï¼Œä¾¿äºŽ server-only SEC provider è¿›è¡Œ live éªŒè¯ï¼›ç”Ÿäº§æž„å»ºä»ä¿ç•™ Cloudflare Worker æ’ä»¶ã€‚è‹¥éœ€è¦æœ¬åœ° Worker é¢„è§ˆï¼Œå¯è®¾ç½® `STOCKPILOT_CLOUDFLARE_DEV=1`ã€‚Worker å…¥å£ä¼šåœ¨æ¯ä¸ªè¯·æ±‚å¼€å§‹æ—¶åªæ³¨å…¥ç™½åå• SEC é…ç½®ï¼Œé¿å…åœ¨æ¨¡å—åŠ è½½æ—¶å†»ç»“ç©ºçš„ `process.env`ã€‚
 
-## 启用 SEC live（可选）
+## å¯ç”¨ SEC liveï¼ˆå¯é€‰ï¼‰
 
-复制 `.env.example` 为本地 `.env.local`，把 `SEC_USER_AGENT` 改成真实且可联系的应用名/邮箱；可按需调整 `SEC_REQUESTS_PER_SECOND` 和 `SEC_CACHE_TTL_SECONDS`。不要提交 `.env`、真实邮箱、API key、数据库密码、`node_modules`、`.next` 或 `dist`。
+å¤åˆ¶ `.env.example` ä¸ºæœ¬åœ° `.env.local`ï¼ŒæŠŠ `SEC_USER_AGENT` æ”¹æˆçœŸå®žä¸”å¯è”ç³»çš„åº”ç”¨å/é‚®ç®±ï¼›å¯æŒ‰éœ€è°ƒæ•´ `SEC_REQUESTS_PER_SECOND`ã€`SEC_CACHE_TTL_SECONDS`ã€`SEC_TIMEOUT_MS` å’Œ `SEC_MAX_RESPONSE_BYTES`ã€‚Cloudflare/Sites éƒ¨ç½²æ—¶åº”åœ¨æœåŠ¡å™¨ç«¯ secret/environment è®¾ç½®ä¸­é…ç½®ç›¸åŒå˜é‡ï¼Œä¸èƒ½å†™å…¥ä»“åº“æˆ–å®¢æˆ·ç«¯ bundleã€‚`/api/sec/health` åªè¿”å›ž runtimeã€æ˜¯å¦é…ç½®å’Œå®‰å…¨è¯Šæ–­ç ï¼Œä¸è¿”å›ž User-Agent å€¼ã€‚ä¸è¦æäº¤ `.env`ã€çœŸå®žé‚®ç®±ã€API keyã€æ•°æ®åº“å¯†ç ã€`node_modules`ã€`.next` æˆ– `dist`ã€‚
 
-## 验证
+## éªŒè¯
 
 ```bash
 npm run lint
@@ -41,34 +41,35 @@ npm test
 npm run build
 ```
 
-`npm test` 使用完全离线 SEC fixtures，覆盖 CIK 映射、概念回退、年度/季度筛选、修订去重、单位、FCF、请求头、限速/重试、缓存/fallback、API schema，以及 0.2 ledger、Checklist、Journal、Insights 和 HTML 渲染回归。
+`npm test` ä½¿ç”¨å®Œå…¨ç¦»çº¿ SEC fixturesï¼Œè¦†ç›– CIK æ˜ å°„ã€æ¦‚å¿µå›žé€€ã€å¹´åº¦/å­£åº¦ç­›é€‰ã€ä¿®è®¢åŽ»é‡ã€å•ä½ã€FCFã€è¯·æ±‚å¤´ã€é™é€Ÿ/é‡è¯•ã€ç¼“å­˜/fallbackã€API schemaï¼Œä»¥åŠ 0.2 ledgerã€Checklistã€Journalã€Insights å’Œ HTML æ¸²æŸ“å›žå½’ã€‚
 
-只有在 `.env.local` 中填写真实可联系邮箱后，才手动运行 `npm run test:sec-live`（或 `pnpm test:sec-live`）访问 SEC，验证 AAPL、MSFT、NVDA、AMZN、TSLA。没有配置时该命令会明确跳过并返回非零状态；常规 `npm test` 不访问网络。
+åªæœ‰åœ¨ `.env.local` ä¸­å¡«å†™çœŸå®žå¯è”ç³»é‚®ç®±åŽï¼Œæ‰æ‰‹åŠ¨è¿è¡Œ `npm run test:sec-live`ï¼ˆæˆ– `pnpm test:sec-live`ï¼‰è®¿é—® SECï¼ŒéªŒè¯ AAPLã€MSFTã€NVDAã€AMZNã€TSLAã€‚æ²¡æœ‰é…ç½®æ—¶è¯¥å‘½ä»¤ä¼šæ˜Žç¡®è·³è¿‡å¹¶è¿”å›žéžé›¶çŠ¶æ€ï¼›å¸¸è§„ `npm test` ä¸è®¿é—®ç½‘ç»œã€‚
 
-## 目录
+## ç›®å½•
 
 ```text
 app/
-  domain/       组合、评分、风险和 Insights 纯函数
-  providers/    Sample providers 与 server-only SEC provider
-  storage/      Zod 校验的 localStorage v2
+  domain/       ç»„åˆã€è¯„åˆ†ã€é£Žé™©å’Œ Insights çº¯å‡½æ•°
+  providers/    Sample providers ä¸Ž server-only SEC provider
+  storage/      Zod æ ¡éªŒçš„ localStorage v2
   api/sec/      SEC snapshot/company/filings route handlers
   components/   SEC source facts panel
-  stocks/       /stocks/[ticker] 页面
-  StockPilotApp.tsx 交互应用壳
-tests/fixtures/sec/  离线 SEC 响应形状 fixture
-docs/             产品、架构、SEC 契约和路线图
-memory-bank/      项目进度与架构记忆
+  stocks/       /stocks/[ticker] é¡µé¢
+  StockPilotApp.tsx äº¤äº’åº”ç”¨å£³
+tests/fixtures/sec/  ç¦»çº¿ SEC å“åº”å½¢çŠ¶ fixture
+docs/             äº§å“ã€æž¶æž„ã€SEC å¥‘çº¦å’Œè·¯çº¿å›¾
+memory-bank/      é¡¹ç›®è¿›åº¦ä¸Žæž¶æž„è®°å¿†
 ```
 
-## 主要文档
+## ä¸»è¦æ–‡æ¡£
 
-- `docs/SEC_INTEGRATION.md`：端点、服务端边界、缓存、限速、归一化规则。
-- `docs/SEC_DATA_CONTRACT.md`：snapshot schema、provenance、状态和数据分类。
-- `docs/ARCHITECTURE_V2.md`：0.2/0.3 分层与隔离原则。
-- `docs/ROADMAP.md`：版本范围和发布门槛。
-- `PRODUCT_SPEC.md`、`USER_FLOWS.md`、`UI_SPEC.md`、`DATA_MODEL.md`、`IMPLEMENTATION_PLAN.md`：产品与工程规格。
+- `docs/SEC_INTEGRATION.md`ï¼šç«¯ç‚¹ã€æœåŠ¡ç«¯è¾¹ç•Œã€ç¼“å­˜ã€é™é€Ÿã€å½’ä¸€åŒ–è§„åˆ™ã€‚
+- `docs/SEC_WORKER_RUNTIME.md`ï¼šWorker ç™½åå•é…ç½®æ³¨å…¥ã€health è¯Šæ–­å’Œæœ¬åœ°é¢„è§ˆã€‚
+- `docs/SEC_DATA_CONTRACT.md`ï¼šsnapshot schemaã€provenanceã€çŠ¶æ€å’Œæ•°æ®åˆ†ç±»ã€‚
+- `docs/ARCHITECTURE_V2.md`ï¼š0.2/0.3 åˆ†å±‚ä¸Žéš”ç¦»åŽŸåˆ™ã€‚
+- `docs/ROADMAP.md`ï¼šç‰ˆæœ¬èŒƒå›´å’Œå‘å¸ƒé—¨æ§›ã€‚
+- `PRODUCT_SPEC.md`ã€`USER_FLOWS.md`ã€`UI_SPEC.md`ã€`DATA_MODEL.md`ã€`IMPLEMENTATION_PLAN.md`ï¼šäº§å“ä¸Žå·¥ç¨‹è§„æ ¼ã€‚
 
-## 免责声明
+## å…è´£å£°æ˜Ž
 
 StockPilot is an educational research and paper-trading tool. It does not provide financial advice, personalized recommendations, guaranteed returns, or real trade execution. SEC facts are public source evidence and do not constitute a buy or sell signal.

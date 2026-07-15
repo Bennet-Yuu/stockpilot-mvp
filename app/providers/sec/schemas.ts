@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SecDiagnosticCode } from "./errors";
 import type { SecFactProvenanceType, SecMetricName, SecPeriodKind, SecSourceMode, SecSnapshotStatus } from "./types";
 
 const secBooleanFlagSchema = z.preprocess((value) => {
@@ -56,6 +57,7 @@ export const secCompanyFactsSchema = z.object({
 const secPeriodKindSchema: z.ZodType<SecPeriodKind> = z.enum(["annual", "quarterly", "instant"]);
 const secSourceModeSchema: z.ZodType<SecSourceMode> = z.enum(["live", "cached", "stale-cache", "sample", "unavailable"]);
 const secStatusSchema: z.ZodType<SecSnapshotStatus> = z.enum(["success", "cached", "fallback", "partial", "not-configured", "rate-limited", "unavailable", "invalid-ticker"]);
+export const secDiagnosticCodeSchema: z.ZodType<SecDiagnosticCode> = z.enum(["SEC_NOT_CONFIGURED", "SEC_FORBIDDEN", "SEC_RATE_LIMITED", "SEC_TIMEOUT", "SEC_NETWORK_ERROR", "SEC_RESPONSE_TOO_LARGE", "SEC_INVALID_JSON", "SEC_INVALID_RESPONSE", "SEC_HTTP_ERROR", "SEC_UNAVAILABLE"]);
 const metricNames = ["Revenue", "Operating Income", "Net Income", "Operating Cash Flow", "Capital Expenditure", "Free Cash Flow", "Assets", "Liabilities", "Cash and Cash Equivalents", "Diluted EPS"] as const;
 export const secMetricNameSchema: z.ZodType<SecMetricName> = z.enum(metricNames);
 
@@ -70,10 +72,10 @@ export const secRecentFilingSchema = z.object({ accessionNumber: z.string(), for
 export const secCompanyIdentitySchema = z.object({ ticker: z.string(), cik: z.string(), legalName: z.string(), exchanges: z.array(z.string()), sic: z.string().optional(), sicDescription: z.string().optional(), fiscalYearEnd: z.string().optional() });
 export const secCompanyFinancialSnapshotSchema = z.object({
   ticker: z.string(), cik: z.string(), companyName: z.string(), identity: secCompanyIdentitySchema,
-  metrics: z.record(secMetricNameSchema, secFinancialMetricSchema), annualHistory: z.array(secAnnualFinancialPointSchema), recentFilings: z.array(secRecentFilingSchema), sourceMode: secSourceModeSchema, status: secStatusSchema, fetchedAt: z.string(), asOf: z.string(), warnings: z.array(z.string()),
+  metrics: z.record(secMetricNameSchema, secFinancialMetricSchema), annualHistory: z.array(secAnnualFinancialPointSchema), recentFilings: z.array(secRecentFilingSchema), sourceMode: secSourceModeSchema, status: secStatusSchema, fetchedAt: z.string(), asOf: z.string(), warnings: z.array(z.string()), diagnosticCode: secDiagnosticCodeSchema.optional(),
 });
 
-const secSnapshotMetadataSchema = z.object({ sourceMode: secSourceModeSchema, status: secStatusSchema, fetchedAt: z.string(), asOf: z.string(), warnings: z.array(z.string()) });
+const secSnapshotMetadataSchema = z.object({ sourceMode: secSourceModeSchema, status: secStatusSchema, fetchedAt: z.string(), asOf: z.string(), warnings: z.array(z.string()), diagnosticCode: secDiagnosticCodeSchema.optional() });
 export const secCompanyIdentityResponseSchema = secSnapshotMetadataSchema.extend({ ticker: z.string(), identity: secCompanyIdentitySchema });
 export const secRecentFilingsResponseSchema = secSnapshotMetadataSchema.extend({ ticker: z.string(), filings: z.array(secRecentFilingSchema) });
 

@@ -11,6 +11,8 @@ export type SecErrorCode =
   | "SEC_INVALID_TICKER"
   | "SEC_UNAVAILABLE";
 
+export type SecDiagnosticCode = Exclude<SecErrorCode, "SEC_INVALID_TICKER">;
+
 export class SecProviderError extends Error {
   readonly code: SecErrorCode;
   readonly status?: number;

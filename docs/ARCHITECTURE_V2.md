@@ -1,62 +1,55 @@
-# StockPilot 0.2 架构
+# StockPilot 0.3 架构
 
-## 目标与边界
+## 产品边界
 
-0.2 的目标是让模拟账户、决策检查、复盘与统计具有可信且可测试的业务逻辑。应用不连接真实券商，不执行订单，不预测价格，也不提供个性化投资建议。没有任何 API Key 时必须完整运行。
+StockPilot 是美股研究教育、买入检查、模拟交易和复盘工具。没有真实券商、真实资金、自动下单、期权、加密货币、实时新闻、价格预测、收益承诺或个性化投资建议。Sample market、Research Profile、Research Report 和初始交易数据都明确标记为 Demo/Sample；SEC 只提供可追溯的官方 source facts。
 
-## 四层结构
+## 分层
 
-### 1. Domain Layer
+### Domain
 
-- `app/domain/portfolio.ts`：买入成本、卖出收入、已实现/未实现盈亏、可用现金、组合价值、仓位、建仓计划及账户状态变更。金额计算统一保留到美分。
-- `app/domain/scoring.ts`：Checklist 完整度、风险阈值、严重/一般警告和交易准入判断。
-- `app/domain/researchProfile.ts`：根据模拟基础指标计算 Research Profile。Momentum 独立展示，不计入 100 分核心总分。
-- `app/domain/insights.ts`：从已平仓交易和 Journal 聚合胜率、平均盈亏、Profit Factor、持有期、仓位和常见错误。
-- `app/domain/dashboard.ts`：从 Watchlist、Checklist、Trade 和 Journal 生成动态待办。
-- `app/domain/drafts.ts`：按 ticker 隔离 Checklist，按 tradeId 隔离 Journal。
-- 状态机：Trade 从 open 进入 closed；每次状态变化同时产生不可变 buy/sell transaction。已创建交易保存 Checklist 快照，之后修改草稿不会回写历史记录。
+`app/domain/` 只放可测试纯函数：portfolio ledger、Buy Readiness、Research Profile、Dashboard Decision Queue、Insights、draft 隔离与领域模型。SEC fact 不进入这些计算；FCF 推导虽由 SEC normalizer 完成，仍保留来源并只作为显示事实。
 
-所有金额、仓位、评分、警告和统计都是确定性 TypeScript 纯函数。LLM 不参与这些计算或状态变更。
+### Providers
 
-### 2. Data Provider Layer
+- `app/providers/marketData.ts`：五只股票的 Sample prices/fundamentals。
+- `app/providers/research.ts`：结构化 Sample research report。
+- `app/providers/filings.ts`：0.2 Mock filing provider。
+- `app/providers/sec/`：0.3 server-only SEC provider。`client.ts` 做请求边界，`schemas.ts` 做 Zod 校验，`normalize.ts` 做事实选择和 provenance，`cache.ts` 做 TTL/stale cache，`sample.ts` 做无配置 fallback。
 
-- `MarketDataProvider` / `MockMarketDataProvider`
-- `FilingDataProvider` / `MockFilingDataProvider`
-- `ResearchProvider` / `MockResearchProvider`
+### Persistence
 
-Provider 隔离数据来源与 UI。当前五只股票、价格、财务指标、申报文件和研究报告均为模拟数据，并在界面和接口中标记。
+`app/storage/` 通过 Zod 维护 localStorage v2，用户的 Watchlist、Checklist、Trade、Journal 和 ledger 均只存在本地。SEC 快照是服务端内存缓存，不写入用户 localStorage，也不覆盖用户输入。
 
-### 3. Persistence Layer
+### Server boundary
 
-- `UserRepository` 定义读取和保存用户工作区的边界。
-- `LocalStorageUserRepository` 是当前实现。
-- localStorage 使用 Zod 验证的 `version: 2` schema。
-- `migrateV1ToV2` 保留 v1 Watchlist、Trade、Checklist 和 Journal，并重建账户交易流水。旧版固定的 6,000 美元现金作为迁移后的期末现金，`initialCash` 根据历史买卖反推，以保证恢复前后组合显示连续。
-- 损坏数据回退到安全的空白 v2 工作区，并向用户显示恢复提示。
+`app/api/sec/` 是 SEC 唯一入口：
 
-### 4. Server Boundary
+- `/api/sec/snapshot/:ticker` 返回统一 `SecCompanyFinancialSnapshot`。
+- `/api/sec/company/:ticker` 返回身份。
+- `/api/sec/filings/:ticker` 返回最近 10-K/10-K/A/10-Q/10-Q/A/8-K。
 
-`app/api/research/[ticker]/route.ts` 是示范性 Next.js Route Handler：验证 ticker，调用 Mock Provider，以 Zod 验证响应，不需要密钥。未来 SEC、外部行情和 LLM 只能在服务端访问；API Key 不得进入客户端 bundle、日志或版本库。
+Route 只接受五个白名单 ticker，使用 typed errors 和安全 HTTP 错误；不返回 stack、原始响应或秘密环境变量。浏览器 `SecSnapshotPanel` 只 fetch 同源 API，不能直接请求 SEC。
 
-## 未来 Provider 替换
+## SEC 安全与新鲜度
 
-- `SecFilingDataProvider`：服务端读取 SEC 原始文件并保留源链接。
-- `ExternalMarketDataProvider`：服务端读取带时间戳的行情和基础指标。
-- `OpenAIResearchProvider`：仅总结已提供的结构化数据、生成双向情景、提取风险、提出研究问题和改善用户逻辑表达。
-- `SupabaseUserRepository`：登录后可选的跨设备同步。
+`SEC_USER_AGENT` 未配置时 provider 直接返回 sample `not-configured`，不发网络请求。配置后默认 5 req/s（强制不超过 10）、最多两次重试、超时、8 MB 响应上限、JSON/Zod 校验和 bounded fallback。缓存条目包含 key、storedAt、expiresAt、source、value；刷新失败时优先 stale cache，其次 sample fallback，并在 warnings 中说明。
 
-## LLM 强制约束
+## 数据分类与 UI 隔离
 
-未来 OpenAI Provider 不能计算盈亏、决定仓位、改变 Checklist 规则、自动下单、输出 Strong Buy/Sell、用模型记忆补充实时事实，或在没有来源时生成公司数据。它必须：
+- Source fact：SEC identity、filing、Company Facts、as-of、filed date、source URL。
+- User input：Watchlist、Checklist、Paper Trade、Journal。
+- System calculation：Research Profile、Readiness、portfolio、Insights、FCF derived value。
+- Scenario/sample：价格、市场指标、研究报告和看多/看空情景。
 
-- 只在服务端运行并读取 `OPENAI_API_KEY`；
-- 使用 Responses API、Structured Outputs 和 Zod 验证；
-- 保存来源与 as-of date；
-- 缺少 Key 或调用失败时回退 `MockResearchProvider`，并显示可理解的回退状态。
+Stock detail 将 SEC panel 放在 Sample fundamentals 之后，保留 Research Profile 的独立评分和 Momentum excluded 说明。任何 SEC 数据都不改变模拟价格、研究评分、买入按钮、交易数量或收益统计。
 
-## 数据分类
+## 验证与降级
 
-- Source fact：未来由原始来源提供；当前为明确标记的 sample provider fact。
-- User input：Watchlist、Checklist、Trade 决策快照和 Journal。
-- System calculation：账本、Profile、风险警告、任务队列和 Insights。
-- Scenario：看多/看空研究情景，不是预测或建议。
+单元测试使用 `tests/fixtures/sec/` 离线 fixture 和注入 transport，禁止常规测试访问网络。CI/本地验证顺序为 lint、typecheck、unit/render tests、production build 和 dependency audit。无 User-Agent 的浏览器 smoke test 必须能完整打开 Demo，并显示可理解的 SEC fallback 状态。
+
+## 0.3 release hardening
+
+发布前验证由 `.github/workflows/ci.yml` 固定为 pnpm frozen lockfile、lint、strict typecheck、离线 test、production build 和 production dependency audit。CI 不注入 SEC User-Agent，也不会执行 live smoke。
+
+`pnpm test:sec-live` 是显式、人工触发的五 ticker 验证命令；它只输出状态、内容长度/读取字节数和不可用计数，不打印 User-Agent 或完整 SEC JSON。没有真实联系邮箱时命令明确退出为 skipped，必须由部署环境补充后再运行。

@@ -26,6 +26,8 @@ npm run dev
 
 浏览器打开终端显示的地址，通常为 <http://localhost:3000>。
 
+本地开发默认使用 vinext Node SSR 运行器，便于 server-only SEC provider 进行 live 验证；生产构建仍保留 Cloudflare Worker 插件。若需要本地 Worker 预览，可设置 `STOCKPILOT_CLOUDFLARE_DEV=1`。
+
 ## 启用 SEC live（可选）
 
 复制 `.env.example` 为本地 `.env.local`，把 `SEC_USER_AGENT` 改成真实且可联系的应用名/邮箱；可按需调整 `SEC_REQUESTS_PER_SECOND` 和 `SEC_CACHE_TTL_SECONDS`。不要提交 `.env`、真实邮箱、API key、数据库密码、`node_modules`、`.next` 或 `dist`。

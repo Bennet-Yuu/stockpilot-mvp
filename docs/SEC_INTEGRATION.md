@@ -18,6 +18,8 @@
 
 浏览器只请求 `/api/sec/snapshot/:ticker`、`/api/sec/company/:ticker` 或 `/api/sec/filings/:ticker`。SEC 请求只发生在 `app/providers/sec/client.ts` 的 server provider 中，客户端 bundle 不包含 `SEC_USER_AGENT` 或 SEC data URL。
 
+本地 `pnpm dev` 默认使用 vinext Node SSR 运行器，使 server-only provider 可以完成 SEC live smoke；生产构建仍使用 Cloudflare Worker 插件。只有需要复现 Worker 运行器时才设置 `STOCKPILOT_CLOUDFLARE_DEV=1`。
+
 `FetchSecHttpClient` 的保护措施：
 
 1. 每次请求带真实联系信息的 `User-Agent`、`Accept: application/json` 和 `Accept-Encoding`。

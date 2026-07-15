@@ -1,16 +1,31 @@
-# Optional server-side SEC provider. Keep the contact string truthful when enabling live requests.
-# Replace the placeholder with a real, reachable contact email before live validation.
-SEC_USER_AGENT="StockPilot/0.3 your.name@your-domain.com"
-SEC_REQUESTS_PER_SECOND="5"
-SEC_CACHE_TTL_SECONDS="3600"
-# Optional safety overrides; defaults are 10 seconds and 8 MB.
-# SEC_TIMEOUT_MS="10000"
-# SEC_MAX_RESPONSE_BYTES="8000000"
+import type { Ticker } from "../../data";
+import type { ResearchLanguage, ResearchResponse } from "./schemas";
+import { aiPromptVersion } from "./schemas";
 
-# Optional server-side source-grounded AI assistant. Never commit OPENAI_API_KEY.
-OPENAI_API_KEY=""
-OPENAI_MODEL="gpt-5.6"
-OPENAI_TIMEOUT_MS="20000"
-OPENAI_MAX_OUTPUT_TOKENS="1600"
-AI_CACHE_TTL_SECONDS="21600"
-AI_REQUESTS_PER_MINUTE="5"
+export function rulesBasedResearchQuestions(ticker: Ticker, language: ResearchLanguage): string[] {
+  if (language === "zh") return [
+    `核验 ${ticker} 最近年度收入趋势是否能够持续。`,
+    "检查经营现金流与自由现金流的期间和单位是否一致。",
+    "进一步研究最近申报中的资本配置和业务分部信息（当前系统未获取申报正文）。",
+  ];
+  return [
+    `Verify whether ${ticker}'s recent annual revenue trend is durable.`,
+    "Check that operating cash flow and system-derived free cash flow use matching periods and units.",
+    "Research capital allocation and segment detail in the latest filings; filing body text is not available here.",
+  ];
+}
+
+export function notConfiguredResponse(ticker: Ticker, sourceMode: "live" | "cached" | "stale-cache" | "sample" | "unavailable", language: ResearchLanguage): ResearchResponse {
+  const questions = rulesBasedResearchQuestions(ticker, language);
+  return {
+    ticker,
+    status: "not-configured",
+    sourceMode,
+    aiMode: "not-configured",
+    cached: false,
+    promptVersion: aiPromptVersion,
+    sources: [],
+    warnings: ["AI Research Assistant is not configured. The following questions are rules-based, not AI-generated.", ...questions],
+    diagnosticCode: "AI_NOT_CONFIGURED",
+  };
+}

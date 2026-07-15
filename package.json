@@ -1,9 +1,56 @@
-import { NextResponse } from "next/server";
-import { getAiHealthSnapshot } from "../../../providers/ai/client";
-import { getLastAiDiagnosticCode } from "../../../providers/ai/errors";
-import { aiPromptVersion } from "../../../providers/ai/schemas";
-
-export async function GET(): Promise<NextResponse> {
-  const health = getAiHealthSnapshot();
-  return NextResponse.json({ ...health, promptVersion: aiPromptVersion, lastDiagnosticCode: getLastAiDiagnosticCode(), checkedAt: new Date().toISOString() }, { status: 200, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+{
+  "name": "stockpilot-prototype",
+  "version": "0.3.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vinext dev",
+    "build": "vinext build",
+    "start": "vinext start",
+    "test": "vinext build && tsx --test tests/unit.test.ts tests/sec.test.ts tests/runtime-config.test.ts tests/ai.test.ts && node --test tests/rendered-html.test.mjs",
+    "test:unit": "tsx --test tests/unit.test.ts tests/sec.test.ts tests/runtime-config.test.ts tests/ai.test.ts",
+    "test:sec-live": "tsx scripts/test-sec-live.ts",
+    "test:ai-live": "tsx scripts/test-ai-live.ts",
+    "typecheck": "tsc --noEmit --incremental false",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "next": "16.2.6",
+    "openai": "^6.46.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "recharts": "3.9.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "react-server-dom-webpack": "19.2.6",
+    "tailwindcss": "4.2.1",
+    "tsx": "4.20.3",
+    "typescript": "5.9.3",
+    "vinext": "0.0.50",
+    "vite": "8.0.16",
+    "wrangler": "4.92.0"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.18"
+    },
+    "undici": "7.28.0",
+    "ws": "8.21.0"
+  },
+  "type": "module"
 }

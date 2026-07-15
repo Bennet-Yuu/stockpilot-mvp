@@ -1,84 +1,53 @@
-import { NextResponse } from "next/server";
-import { normalizeSecTicker } from "../../../../providers/sec/tickerMap";
-import { getSecFilingDataProvider } from "../../../../providers/sec/provider";
-import type { SecCompanyFinancialSnapshot } from "../../../../providers/sec/types";
-import { getAiRuntimeConfig } from "../../../../providers/ai/client";
-import { buildResearchEvidenceBundle } from "../../../../providers/ai/evidence";
-import { AiProviderError, setLastAiDiagnosticCode } from "../../../../providers/ai/errors";
-import { containsRefusalRequest } from "../../../../providers/ai/grounding";
-import { aiPromptVersion, researchRequestSchema, researchResponseSchema, type ResearchResponse } from "../../../../providers/ai/schemas";
-import { getResearchAssistantProvider } from "../../../../providers/ai/provider";
-import { getAiRateLimiter, hashClientIdentifier } from "../../../../providers/ai/rateLimit";
-import type { ResearchAssistantProvider } from "../../../../providers/ai/types";
+# StockPilot 0.4 AI 数据契约
 
-const MAX_REQUEST_BYTES = 12_000;
-const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+## 请求边界
 
-function json(payload: ResearchResponse, status = 200, extraHeaders: Record<string, string> = {}): NextResponse {
-  const parsed = researchResponseSchema.safeParse(payload);
-  if (!parsed.success) return NextResponse.json({ ticker: payload.ticker, status: "provider-error", sourceMode: payload.sourceMode, aiMode: "not-configured", cached: false, promptVersion: aiPromptVersion, sources: [], warnings: ["AI response failed safe response validation."], diagnosticCode: "AI_SCHEMA_ERROR" }, { status: 502, headers });
-  return NextResponse.json(parsed.data, { status, headers: { ...headers, ...extraHeaders } });
+`POST /api/ai/research/:ticker` 只接受：
+
+```json
+{
+  "language": "en | zh",
+  "question": "optional, maximum 500 characters",
+  "regenerate": false
 }
+```
 
-function invalidTicker(): NextResponse {
-  return NextResponse.json({ error: "Unsupported ticker", status: "invalid-ticker" }, { status: 400, headers });
-}
+服务端从当前 SEC snapshot 构造 `ResearchEvidenceBundle`。Bundle 只包含五只白名单股票的 SEC identity、可用 normalized facts、确定性年度趋势、最近申报元数据和 SEC 来源链接，不包含 localStorage、Paper Trades、Portfolio、Checklist、Journal、Insights、Watchlist、邮箱、IP、User-Agent 或任何 secret。
 
-async function readRequestBody(request: Request): Promise<unknown> {
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_REQUEST_BYTES) throw new AiProviderError("AI_INVALID_REQUEST", "Request body is too large.");
-  if (!text.trim()) return {};
-  try { return JSON.parse(text) as unknown; } catch { throw new AiProviderError("AI_INVALID_REQUEST", "Request body is not valid JSON."); }
-}
+只有 `sourceMode=live|cached|stale-cache` 可以进入 AI。`sample` 与 `unavailable` 会被阻止。
 
-function errorResponse(ticker: string, sourceMode: ResearchResponse["sourceMode"], error: AiProviderError, sources: ResearchResponse["sources"] = [], warnings: string[] = []): NextResponse {
-  const status = error.code === "AI_RATE_LIMITED" ? 429 : error.code === "AI_INVALID_REQUEST" ? 400 : error.code === "AI_REFUSED" ? 422 : error.code === "AI_GROUNDING_ERROR" || error.code === "AI_SCHEMA_ERROR" ? 502 : 503;
-  const retryAfter = error.code === "AI_RATE_LIMITED" ? String(Math.max(1, Number(error.cause) || 60)) : undefined;
-  const aiMode = error.code === "AI_NOT_CONFIGURED" || error.code === "AI_SEC_UNAVAILABLE" ? "not-configured" : "ai-live";
-  return json({ ticker, status: error.code === "AI_RATE_LIMITED" ? "rate-limited" : error.code === "AI_REFUSED" ? "refused" : error.code === "AI_GROUNDING_ERROR" ? "grounding-error" : error.code === "AI_SCHEMA_ERROR" ? "schema-error" : error.code === "AI_NOT_CONFIGURED" ? "not-configured" : error.code === "AI_SEC_UNAVAILABLE" ? "sec-unavailable" : "provider-error", sourceMode, aiMode, cached: false, promptVersion: aiPromptVersion, sources, warnings: [...warnings, error.code === "AI_GROUNDING_ERROR" ? "AI output did not pass source grounding validation." : error.code === "AI_REFUSED" ? "The request is outside StockPilot's research-only boundaries." : error.code === "AI_SEC_UNAVAILABLE" ? "SEC sample or unavailable data was not sent to AI." : "AI Research Assistant is temporarily unavailable."], diagnosticCode: error.code }, status, retryAfter ? { "Retry-After": retryAfter } : {});
-}
+## Evidence Bundle
 
-export async function createAiResearchResponse(request: Request, rawTicker: unknown, provider?: ResearchAssistantProvider): Promise<NextResponse> {
-  let ticker;
-  try { ticker = normalizeSecTicker(rawTicker); } catch { return invalidTicker(); }
+核心字段：`ticker`、`companyName`、`cik`、`asOf`、`sourceMode`、`generatedFromSnapshotAt`、`facts`、`annualTrends`、`recentFilings`、`sources`、`evidenceHash`。
 
-  let requestBody: unknown;
-  try { requestBody = await readRequestBody(request); } catch (error) { return errorResponse(ticker, "unavailable", error instanceof AiProviderError ? error : new AiProviderError("AI_INVALID_REQUEST", "Invalid request.")); }
-  const parsedRequest = researchRequestSchema.safeParse(requestBody);
-  if (!parsedRequest.success) return errorResponse(ticker, "unavailable", new AiProviderError("AI_INVALID_REQUEST", "Request validation failed."));
-  const { language, question, regenerate } = parsedRequest.data;
+每个来源都有唯一 `sourceId`，例如：
 
-  let snapshot: SecCompanyFinancialSnapshot;
-  try { snapshot = await getSecFilingDataProvider().getCompanySnapshot(ticker); } catch { return errorResponse(ticker, "unavailable", new AiProviderError("AI_SEC_UNAVAILABLE", "SEC evidence is unavailable.")); }
-  if (snapshot.sourceMode === "sample" || snapshot.sourceMode === "unavailable") return errorResponse(ticker, snapshot.sourceMode, new AiProviderError("AI_SEC_UNAVAILABLE", "Sample or unavailable SEC data cannot be sent to AI."), [], snapshot.warnings);
+- `sec:identity:AAPL`
+- `sec:metric:Revenue:2024-12-28`
+- `sec:derived:FreeCashFlow:2024-12-28`
+- `sec:trend:Revenue:2024-12-28`
+- `sec:filing:0000320193-24-000122`
 
-  if (question && containsRefusalRequest(question)) return errorResponse(ticker, snapshot.sourceMode, new AiProviderError("AI_REFUSED", "The question is outside the research-only scope."), [], snapshot.warnings);
-  const evidence = (() => { try { return buildResearchEvidenceBundle(snapshot); } catch { return undefined; } })();
-  if (!evidence) return errorResponse(ticker, snapshot.sourceMode, new AiProviderError("AI_SEC_UNAVAILABLE", "SEC evidence could not be prepared safely."), [], snapshot.warnings);
+FCF 只能由系统使用相同期间和单位的 `Operating Cash Flow - Capital Expenditure` 得出，并标记 `derived=true` 与 `derivedFrom`。缺失事实不会被替换为零。
 
-  const aiConfig = getAiRuntimeConfig();
-  if (!aiConfig.apiKey) {
-    setLastAiDiagnosticCode("AI_NOT_CONFIGURED");
-    return json({ ticker, status: "not-configured", sourceMode: snapshot.sourceMode, aiMode: "not-configured", cached: false, promptVersion: aiPromptVersion, sources: [], warnings: ["AI Research Assistant is not configured. No OpenAI request was made.", "Rules-based research questions are available in the UI; they are not AI-generated.", ...snapshot.warnings], diagnosticCode: "AI_NOT_CONFIGURED" });
-  }
+## AI 输出
 
-  const identifier = hashClientIdentifier(request.headers.get("x-forwarded-for") ?? request.headers.get("cf-connecting-ip") ?? undefined);
-  const rate = getAiRateLimiter(aiConfig.requestsPerMinute).take(identifier);
-  if (!rate.allowed) {
-    const error = new AiProviderError("AI_RATE_LIMITED", "AI rate limit reached.", { cause: rate.retryAfterSeconds });
-    return errorResponse(ticker, snapshot.sourceMode, error, evidence.sources, snapshot.warnings);
-  }
+`ResearchBrief` 使用 Zod Structured Output schema，包含 `summary`、`financialTrends`、`strengths`、`risks`、`bullCaseConditions`、`bearCaseConditions`、`researchQuestions`、`limitations`、`sourceIndex`、`generatedAt`、`model` 和 `promptVersion`。
 
-  try {
-    const result = await (provider ?? getResearchAssistantProvider()).generateResearchBrief({ ticker, language, question, regenerate, evidence });
-    const status: ResearchResponse["status"] = result.status === "cached" ? "cached" : "success";
-    return json({ ticker, status, sourceMode: snapshot.sourceMode, aiMode: result.aiMode, generatedAt: result.brief.generatedAt, cached: result.cached, promptVersion: result.brief.promptVersion, brief: result.brief, sources: evidence.sources, warnings: [...snapshot.warnings, ...result.warnings], diagnosticCode: undefined });
-  } catch (error) {
-    const safe = error instanceof AiProviderError ? error : new AiProviderError("AI_PROVIDER_ERROR", "AI provider unavailable.");
-    return errorResponse(ticker, snapshot.sourceMode, safe, evidence.sources, snapshot.warnings);
-  }
-}
+每条 `ResearchClaim` 由 `{ text, sourceIds }` 组成。事实性段落必须至少引用一个 Bundle 来源；研究问题可以没有引用，但必须与当前证据相关。
 
-export async function POST(request: Request, { params }: { params: Promise<{ ticker: string }> }): Promise<NextResponse> {
-  try { return createAiResearchResponse(request, (await params).ticker); } catch { return errorResponse("unknown", "unavailable", new AiProviderError("AI_INVALID_REQUEST", "Invalid request.")); }
-}
+## Grounding 规则
+
+结构化解析后还要执行确定性校验：
+
+1. 所有 `sourceId` 必须存在于 Bundle。
+2. 不允许引用其他 ticker、未知 accession、未知年份、未知金额或不存在的 SEC URL。
+3. 不能把 system-derived FCF 描述为 SEC 直接披露。
+4. 禁止评级、价格目标、收益率、概率、价格预测、仓位和交易指令。
+5. 校验失败时不显示部分结果、不放宽规则、不缓存结果，只返回 `grounding-error`。
+
+## API 状态
+
+`success`、`cached`、`not-configured`、`sec-unavailable`、`rate-limited`、`provider-error`、`schema-error`、`grounding-error`、`refused`。
+
+Response 使用 `Cache-Control: no-store`；AI cache 只在服务端内存中管理。

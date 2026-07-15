@@ -1,237 +1,69 @@
-"use client";
+import type { Ticker } from "../../data";
+import type { ResearchBrief, ResearchEvidenceBundle, ResearchLanguage, ResearchRequest, ResearchResponse } from "./schemas";
 
-import React, { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { stocks, tickerList, type Stock, type Ticker } from "./data";
-import { calculateReadiness } from "./domain/scoring";
-import { applyPurchase, closeTrade, planTrade, summarizePortfolio } from "./domain/portfolio";
-import { buildDecisionQueue } from "./domain/dashboard";
-import { summarizeInsights, type InsightBucket } from "./domain/insights";
-import { calculateResearchProfile } from "./domain/researchProfile";
-import type { AccountLedger, ChecklistInput as Checklist, JournalRecord, TradeRecord as Trade, WatchlistRecord as WatchItem, WatchStatus, UserDataV1 } from "./domain/models";
-import { checklistWarningText, type Locale, readLocalePreference, t, translateDom, writeLocalePreference } from "./i18n";
-import { marketDataProvider } from "./providers/marketData";
-import SecSnapshotPanel from "./components/SecSnapshotPanel";
-import AiResearchAssistantPanel from "./components/AiResearchAssistantPanel";
-import { getBrowserStorage, migrateV1ToV2, readThemePreference, readUserData, writeThemePreference, writeUserData } from "./storage/userData";
+export type { ResearchBrief, ResearchEvidenceBundle, ResearchLanguage, ResearchRequest, ResearchResponse };
 
-type View = "dashboard" | "stock" | "watchlist" | "checklist" | "portfolio" | "journal" | "insights";
+export type AiMode = "ai-live" | "ai-cached" | "not-configured" | "rules-based";
+export type AiStatus = "success" | "cached" | "not-configured" | "sec-unavailable" | "rate-limited" | "provider-error" | "schema-error" | "grounding-error" | "refused";
 
-const nav: { id: View; label: string; glyph: string }[] = [
-  {id:"dashboard",label:"Dashboard",glyph:"⌂"},{id:"watchlist",label:"Watchlist",glyph:"☆"},{id:"checklist",label:"Buy Checklist",glyph:"✓"},
-  {id:"portfolio",label:"Paper Portfolio",glyph:"▦"},{id:"journal",label:"Trade Journal",glyph:"✎"},{id:"insights",label:"Insights",glyph:"⌁"},
-];
-
-const initialWatchlist: WatchItem[] = [
-  {ticker:"NVDA",target:128,reason:"Wait for valuation to offer a wider margin of safety.",status:"Watching"},
-  {ticker:"MSFT",target:420,reason:"Research Azure growth durability and AI capex returns.",status:"Researching"},
-  {ticker:"AMZN",target:190,reason:"Watch AWS margin and retail operating leverage.",status:"Ready to Buy"},
-];
-
-const initialTrades: UserDataV1["trades"] = [
-  {id:1,ticker:"AAPL",buyPrice:204.12,shares:12,date:"2026-05-08",target:245,maxLoss:12,thesis:"Services growth and durable cash flow can offset slower hardware cycles.",invalidation:"Services growth below 5% for two quarters.",holding:"6–12 months"},
-  {id:2,ticker:"MSFT",buyPrice:425.30,shares:5,date:"2026-06-14",target:490,maxLoss:10,thesis:"Cloud and AI monetization can sustain double-digit earnings growth.",invalidation:"Azure growth falls below 20% without margin improvement.",holding:"1–3 years"},
-  {id:3,ticker:"AMZN",buyPrice:198.40,shares:4,date:"2026-04-22",target:225,maxLoss:10,thesis:"AWS and ads improve consolidated margins.",invalidation:"AWS growth and margins decline together for two quarters.",holding:"6–12 months",closed:true,sellPrice:212.10},
-];
-
-const initialUserData=migrateV1ToV2({version:1,watchlist:initialWatchlist,trades:initialTrades,checklistDrafts:{},journals:{}});
-
-const emptyChecklist: Checklist = {why:"",holding:"",invalidation:"",maxLoss:"",weight:"",driver:"",event:"",target:"",exit:""};
-
-function Badge({children,tone="neutral"}:{children:React.ReactNode;tone?:"fact"|"input"|"inference"|"neutral"}) { return <span className={`badge ${tone}`}>{children}</span>; }
-function Money({value}:{value:number}) { return <>{value.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2})}</>; }
-type AppProps = { initialView?: View; initialTicker?: Ticker };
-
-export default function StockPilotApp({ initialView = "dashboard", initialTicker = "AAPL" }: AppProps){
-  const router = useRouter();
-  const [view,setView]=useState<View>(initialView);
-  const [ticker,setTicker]=useState<Ticker>(initialTicker);
-  const [query,setQuery]=useState("");
-  const [theme,setTheme]=useState<"light"|"dark">("light");
-  const [locale,setLocale]=useState<Locale>("en");
-  const [watchlist,setWatchlist]=useState<WatchItem[]>(initialUserData.watchlist);
-  const [trades,setTrades]=useState<Trade[]>(initialUserData.trades);
-  const [account,setAccount]=useState<AccountLedger>(initialUserData.account);
-  const [checklistDrafts,setChecklistDrafts]=useState<Partial<Record<Ticker,Checklist>>>(initialUserData.checklistDrafts);
-  const [journals,setJournals]=useState<Record<string,JournalRecord>>(initialUserData.journals);
-  const [hydrated,setHydrated]=useState(false);
-  const [toast,setToast]=useState("");
-  const [researchTab,setResearchTab]=useState<"snapshot"|"report">("snapshot");
-  const [journalSaved,setJournalSaved]=useState(false);
-  useEffect(()=>{
-    const storage=getBrowserStorage();
-    const stored=readUserData(storage);
-    const data=stored.hasSavedData?stored.data:initialUserData;
-    const timer=window.setTimeout(()=>{
-      setTheme(readThemePreference(storage));setLocale(readLocalePreference(storage));
-      setWatchlist(data.watchlist);setTrades(data.trades);setAccount(data.account);setChecklistDrafts(data.checklistDrafts);setJournals(data.journals);
-      if(!stored.hasSavedData&&!writeUserData(data,storage)) setToast("Changes could not be saved on this device");
-      if(stored.recovered) setToast("Saved data was unreadable; demo data was restored");
-      else if(stored.migrated) setToast("Saved workspace was upgraded to data version 2");
-      setHydrated(true);
-    },0);
-    return()=>window.clearTimeout(timer);
-  },[]);
-  useEffect(()=>{ document.documentElement.dataset.theme=theme; if(hydrated)writeThemePreference(theme,getBrowserStorage()); },[theme,hydrated]);
-  useEffect(()=>{
-    document.documentElement.dataset.locale=locale;
-    document.documentElement.lang=locale==="zh"?"zh-CN":"en";
-    if(hydrated)writeLocalePreference(locale,getBrowserStorage());
-    const root=document.querySelector<HTMLElement>(".app-shell");
-    if(root) translateDom(root,locale);
-  },[locale,view,hydrated]);
-  useEffect(()=>{
-    if(!hydrated)return;
-    const storage=getBrowserStorage();
-    if(storage&&!writeUserData({version:2,account,watchlist,trades,checklistDrafts,journals},storage)) window.setTimeout(()=>setToast("Changes could not be saved on this device"),0);
-  },[account,watchlist,trades,checklistDrafts,journals,hydrated]);
-  useEffect(()=>{ if(!toast)return; const timer=setTimeout(()=>setToast(""),2600); return()=>clearTimeout(timer); },[toast]);
-
-  const portfolio=summarizePortfolio(trades,stocks,account);
-  const activeTrades=portfolio.openTrades;
-  const portfolioValue=portfolio.portfolioValue;
-  const pnl=portfolio.unrealizedPnL;
-  const searchResults=marketDataProvider.listSupportedTickers().filter(t=>`${t} ${stocks[t].name}`.toLowerCase().includes(query.toLowerCase()));
-
-  const navigate=(next:View)=>{setView(next);const path=next==="dashboard"?"/":next==="stock"?`/stocks/${ticker}`:next==="checklist"?`/checklist/${ticker}`:next==="portfolio"?"/paper-trades":`/${next}`;router.push(path);window.scrollTo({top:0,behavior:"smooth"});};
-  const openStock=(next:Ticker)=>{setTicker(next);setQuery("");setResearchTab("snapshot");setView("stock");router.push(`/stocks/${next}`);window.scrollTo({top:0,behavior:"smooth"});};
-  return <div className="app-shell">
-    <aside className="sidebar">
-      <button className="brand" onClick={()=>navigate("dashboard")} aria-label="StockPilot dashboard"><span className="brand-mark">SP</span><span><strong>StockPilot</strong><small>Research with a process</small></span></button>
-      <nav aria-label="Primary navigation">{nav.map(item=><button key={item.id} className={view===item.id?"active":""} onClick={()=>navigate(item.id)}><span>{item.glyph}</span>{item.label}</button>)}</nav>
-      <div className="side-footer"><Badge tone="neutral">Demo workspace</Badge><p>Sample data only<br/>No brokerage connection</p></div>
-    </aside>
-    <main>
-      <header className="topbar">
-        <button className="mobile-brand" onClick={()=>navigate("dashboard")} aria-label="StockPilot dashboard"><span className="brand-mark">SP</span></button>
-        <div className="global-search">
-          <span aria-hidden="true">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search AAPL, MSFT, NVDA, AMZN, TSLA" aria-label="Search stocks" />
-          {query&&<div className="search-popover">{searchResults.length?searchResults.map(t=><button key={t} onClick={()=>openStock(t)}><b>{t}</b><span>{stocks[t].name}</span><em><Money value={stocks[t].price}/></em></button>):<p>No supported demo ticker found.</p>}</div>}
-        </div>
-        <div className="locale-toggle" role="group" aria-label="Language">
-          <button className={locale==="zh"?"active":""} onClick={()=>setLocale("zh")} aria-pressed={locale==="zh"}>中文</button>
-          <button className={locale==="en"?"active":""} onClick={()=>setLocale("en")} aria-pressed={locale==="en"}>EN</button>
-        </div>
-        <button className="icon-button" onClick={()=>setTheme(theme==="light"?"dark":"light")} aria-label="Toggle color theme">{theme==="light"?"☾":"☀"}</button>
-        <div className="avatar" aria-label="Demo user">DW</div>
-      </header>
-      <div className="demo-banner"><span>●</span><strong>Demo mode</strong> — Prices, analysis, and transactions use sample data. Nothing here involves real money.</div>
-      <div className="page-wrap">
-        {view==="dashboard"&&<Dashboard locale={locale} portfolioValue={portfolioValue} pnl={pnl} activeTrades={activeTrades} watchlist={watchlist} drafts={checklistDrafts} trades={trades} journals={journals} openStock={openStock} navigate={navigate}/>}
-        {view==="stock"&&<StockDetail stock={stocks[ticker]} locale={locale} researchTab={researchTab} setResearchTab={setResearchTab} watchlist={watchlist} setWatchlist={setWatchlist} navigate={navigate} notify={setToast}/>}
-        {view==="watchlist"&&<Watchlist items={watchlist} setItems={setWatchlist} openStock={openStock}/>}
-        {view==="checklist"&&<BuyChecklist locale={locale} ticker={ticker} setTicker={setTicker} drafts={checklistDrafts} setDrafts={setChecklistDrafts} trades={trades} setTrades={setTrades} account={account} setAccount={setAccount} portfolioValue={portfolioValue} navigate={navigate} notify={setToast}/>}
-        {view==="portfolio"&&<Portfolio trades={trades} setTrades={setTrades} account={account} setAccount={setAccount} portfolioValue={portfolioValue} navigate={navigate} notify={setToast}/>}
-        {view==="journal"&&<Journal trades={trades} saved={journalSaved} setSaved={setJournalSaved} entries={journals} setEntries={setJournals}/>}
-        {view==="insights"&&<Insights trades={trades} journals={journals}/>}
-      </div>
-      <footer><p><strong>StockPilot is an educational research and paper-trading tool.</strong> It does not provide personalized investment advice or execute trades.<br/>Demo analysis based on sample data. Not investment advice.</p><p><Badge tone="fact">Source fact</Badge> Verify demo facts with original sources: <a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noreferrer">SEC EDGAR</a> and company investor relations pages.</p></footer>
-    </main>
-    <nav className="mobile-nav" aria-label="Mobile navigation">{nav.map(item=><button key={item.id} className={view===item.id?"active":""} onClick={()=>navigate(item.id)}><span>{item.glyph}</span><small>{item.label.replace("Paper ","").replace("Buy ","")}</small></button>)}</nav>
-    {toast&&<div role="status" className="toast">✓ {toast}</div>}
-  </div>;
+export interface ResearchAssistantInput {
+  ticker: Ticker;
+  language: ResearchLanguage;
+  question?: string;
+  regenerate: boolean;
+  evidence: ResearchEvidenceBundle;
 }
 
-function PageTitle({eyebrow,title,subtitle,action}:{eyebrow:string;title:string;subtitle:string;action?:React.ReactNode}){return <div className="page-title"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{subtitle}</p></div>{action}</div>}
-
-function Dashboard({locale,portfolioValue,pnl,activeTrades,watchlist,drafts,trades,journals,openStock,navigate}:{locale:Locale;portfolioValue:number;pnl:number;activeTrades:Trade[];watchlist:WatchItem[];drafts:Partial<Record<Ticker,Checklist>>;trades:Trade[];journals:Record<string,JournalRecord>;openStock:(t:Ticker)=>void;navigate:(v:View)=>void}){
-  const [heroQuery,setHeroQuery]=useState("");
-  const results=tickerList.filter(t=>`${t} ${stocks[t].name}`.toLowerCase().includes(heroQuery.toLowerCase()));
-  const tasks=buildDecisionQueue(watchlist,drafts,trades,journals);
-  const missingJournals=trades.filter(t=>(t.closedAt||t.closed)&&!journals[String(t.id)]).length;
-  const [localDate,setLocalDate]=useState("");
-  useEffect(()=>{const timer=window.setTimeout(()=>setLocalDate(new Intl.DateTimeFormat(locale==="zh"?"zh-CN":"en-US",{weekday:"long",month:"long",day:"numeric"}).format(new Date())),0);return()=>window.clearTimeout(timer)},[locale]);
-  return <>
-    <PageTitle eyebrow={localDate} title={t("dashboard.greeting",locale)} subtitle="Stay focused on your process, not today’s noise."/>
-    <section className="hero-search"><div><Badge tone="inference">START A RESEARCH PATH</Badge><h2>What company do you want to understand?</h2><p>Search a supported ticker to review facts, balanced analysis, and risk checks.</p></div><div className="hero-search-box"><span>⌕</span><input value={heroQuery} onChange={e=>setHeroQuery(e.target.value)} placeholder="Search by ticker or company" aria-label="Search a stock from dashboard"/>{heroQuery&&<div className="hero-results">{results.map(t=><button key={t} onClick={()=>openStock(t)}><b>{t}</b><span>{stocks[t].name}</span><em>View research →</em></button>)}</div>}</div><div className="quick-tickers">Popular in demo: {tickerList.map(t=><button key={t} onClick={()=>openStock(t)}>{t}</button>)}</div></section>
-    <div className="metric-grid"><Metric label="Paper portfolio" value={<Money value={portfolioValue}/>} delta={`${pnl>=0?"+":"−"}$${Math.abs(pnl).toFixed(2)} unrealized`}/><Metric label="Total return" value={`${pnl>=0?"+":""}${(pnl/Math.max(1,portfolioValue-pnl)*100).toFixed(2)}%`} delta="Open positions only"/><Metric label="Open positions" value={String(activeTrades.length)} delta="Thesis snapshots saved"/><Metric label="Pending reviews" value={String(tasks.length)} delta={`${missingJournals} missing journal${missingJournals===1?"":"s"}`}/></div>
-    <div className="two-col dashboard-lower"><section className="card"><div className="section-head"><div><p className="eyebrow">PAPER PORTFOLIO</p><h2>Open positions</h2></div><button className="text-button" onClick={()=>navigate("portfolio")}>View portfolio →</button></div><div className="table-wrap"><table><thead><tr><th>Company</th><th>Value</th><th>Return</th><th>Thesis status</th></tr></thead><tbody>{activeTrades.map(t=>{const current=stocks[t.ticker].price*t.shares,ret=(stocks[t.ticker].price/t.buyPrice-1)*100;return <tr key={t.id} onClick={()=>openStock(t.ticker)}><td><TickerCell ticker={t.ticker}/></td><td><Money value={current}/></td><td className={ret>=0?"positive":"negative"}>{ret>=0?"+":""}{ret.toFixed(1)}%</td><td><Badge tone="inference">{t.invalidationCondition?"Thesis recorded":"Review needed"}</Badge></td></tr>})}</tbody></table></div></section>
-      <section className="card decisions"><div className="section-head"><div><p className="eyebrow">NEXT ACTIONS</p><h2>Decision queue</h2></div><span className="count">{tasks.length}</span></div>{tasks.length?tasks.slice(0,5).map(task=><button key={task.id} onClick={()=>task.kind==="journal"?navigate("journal"):task.kind==="checklist"||task.kind==="risk"?navigate("checklist"):task.ticker?openStock(task.ticker):navigate("portfolio")}><span className="decision-icon">{task.kind==="journal"?"✎":task.kind==="price"?"⌁":"✓"}</span><span><b>{task.title}</b><small>{task.detail}</small></span><em>→</em></button>):<div className="empty-inline"><b>No pending process tasks</b><p>New checklist risks and journal gaps will appear here.</p></div>}</section></div>
-    <section className="principle"><span>i</span><div><b>Process reminder</b><p>{t("dashboard.processReminderDetail",locale)}</p></div></section>
-  </>;
+export interface ResearchAssistantResult {
+  status: Extract<AiStatus, "success" | "cached">;
+  aiMode: Extract<AiMode, "ai-live" | "ai-cached">;
+  cached: boolean;
+  brief: ResearchBrief;
+  warnings: string[];
+  latencyMs: number;
+  tokenUsage?: number;
 }
 
-function Metric({label,value,delta}:{label:string;value:React.ReactNode;delta:string}){return <section className="metric card"><p>{label}</p><h2>{value}</h2><small>{delta}</small></section>}
-function TickerCell({ticker}:{ticker:Ticker}){return <div className="ticker-cell"><span>{ticker.slice(0,1)}</span><div><b>{ticker}</b><small>{stocks[ticker].name}</small></div></div>}
-
-function StockDetail({stock,locale,researchTab,setResearchTab,watchlist,setWatchlist,navigate,notify}:{stock:Stock;locale:Locale;researchTab:"snapshot"|"report";setResearchTab:(v:"snapshot"|"report")=>void;watchlist:WatchItem[];setWatchlist:React.Dispatch<React.SetStateAction<WatchItem[]>>;navigate:(v:View)=>void;notify:(s:string)=>void}){
-  const profile=calculateResearchProfile(stock); const watched=watchlist.some(w=>w.ticker===stock.ticker);
-  const investorRelations:Record<Ticker,string>={AAPL:"https://investor.apple.com/",MSFT:"https://www.microsoft.com/en-us/Investor",NVDA:"https://investor.nvidia.com/",AMZN:"https://ir.aboutamazon.com/",TSLA:"https://ir.tesla.com/"};
-  const add=()=>{if(!watched)setWatchlist(items=>[...items,{ticker:stock.ticker,target:Math.round(stock.price*.92),reason:"Research the business and wait for a better entry.",status:"Researching"}]);notify(watched?"Already on your watchlist":"Added to watchlist")};
-  return <>
-    <div className="stock-heading"><div className="stock-identity"><span>{stock.ticker.slice(0,1)}</span><div><div><h1>{stock.ticker}</h1><Badge tone="fact">SAMPLE MARKET DATA</Badge></div><p>{stock.name} · {stock.sector}</p></div></div><div className="stock-price"><h2><Money value={stock.price}/></h2><p className={stock.change>=0?"positive":"negative"}>{stock.change>=0?"+":""}{stock.change.toFixed(2)}% today</p></div><div className="stock-actions"><button className="secondary" onClick={add}>{watched?"✓ On Watchlist":"☆ Add to Watchlist"}</button><button className="primary" onClick={()=>navigate("checklist")}>Start Buy Checklist →</button></div></div>
-    <div className="tabbar"><button className={researchTab==="snapshot"?"active":""} onClick={()=>setResearchTab("snapshot")}>Research Snapshot</button><button className={researchTab==="report"?"active":""} onClick={()=>setResearchTab("report")}>Full Research Report</button></div>
-    {researchTab==="snapshot"?<>
-      <section className="card score-card"><div className="score-total"><p className="eyebrow">RESEARCH PROFILE</p><div className="score-ring" style={{"--score":`${profile.score*3.6}deg`} as React.CSSProperties}><span><b>{profile.score}</b><small>/100</small></span></div><h2>{profile.score>=80?"Research coverage is extensive":"Research coverage has gaps"}</h2><p>Coverage describes the sample research framework, not company quality, expected return, or a buy signal.</p><div className="legend"><Badge tone="fact">Sample data</Badge><Badge tone="inference">{profile.version}</Badge></div><small>As of {profile.asOf}</small></div><div className="score-breakdown">{profile.dimensions.map(s=><div key={s.label}><div className="score-line"><b>{s.label}</b><span>{s.score} / {s.max}</span></div><div className="progress"><i style={{width:`${s.score/s.max*100}%`}}/></div><p><b>Meaning:</b> {s.meaning}<br/><b>Supporting metric:</b> {s.supportingMetric}<br/><b>Rule:</b> {s.rule} <Badge tone="inference">{s.dataType}</Badge></p></div>)}<div><div className="score-line"><b>Momentum (excluded)</b><span>{profile.momentum.toFixed(0)} / 100</span></div><div className="progress"><i style={{width:`${profile.momentum}%`}}/></div><p>Sample price behavior is shown separately and does not affect the core Research Profile.</p></div></div></section>
-      <div className="two-col stock-grid"><section className="card"><div className="section-head"><div><p className="eyebrow">12-MONTH SAMPLE</p><h2>Price trend</h2></div><Badge tone="fact">Delayed demo</Badge></div><PriceTrendChart stock={stock}/></section><section className="card company-about"><p className="eyebrow">BUSINESS OVERVIEW</p><h2>What the company does</h2><p>{stock.description}</p><button className="text-button" onClick={()=>setResearchTab("report")}>Read full structured report →</button></section></div>
-      <section className="card"><div className="section-head"><div><p className="eyebrow">FUNDAMENTALS</p><h2>Key metrics</h2></div><Badge tone="fact">Sample provider facts</Badge></div><div className="fundamentals">{[["Market cap",stock.marketCap],["P/E",stock.pe],["Forward P/E",stock.forwardPe],["Revenue growth",stock.growth],["Net margin",stock.margin],["Free cash flow",stock.fcf],["52-week high",`$${stock.high}`],["52-week low",`$${stock.low}`]].map(([k,v])=><div key={k}><small>{k}</small><b>{v}</b></div>)}</div><div className="source-links"><div><Badge tone="fact">Original sources</Badge><p>Use primary documents to verify all demo facts before making a real-world decision.</p></div><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noreferrer">SEC EDGAR ↗</a><a href={investorRelations[stock.ticker]} target="_blank" rel="noreferrer">Company investor relations ↗</a></div></section>
-      <SecSnapshotPanel ticker={stock.ticker}/>
-      <AiResearchAssistantPanel ticker={stock.ticker} locale={locale}/>
-    </>:<ResearchReport stock={stock}/>} 
-  </>;
+export interface ResearchAssistantProvider {
+  generateResearchBrief(input: ResearchAssistantInput): Promise<ResearchAssistantResult>;
 }
 
-function PriceTrendChart({stock}:{stock:Stock}){
-  const data=stock.prices.map((price,index)=>({month:["Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May","Jun","Jul"][index]??String(index+1),price}));
-  return <div className="recharts-shell" role="img" aria-label={`${stock.ticker} 12-month sample price trend`}><ResponsiveContainer width="100%" height={230}><LineChart data={data} margin={{top:18,right:12,left:0,bottom:0}}><XAxis dataKey="month" tick={{fontSize:9,fill:"var(--muted)"}} axisLine={{stroke:"var(--line)"}} tickLine={false}/><YAxis domain={["dataMin","dataMax"]} tick={{fontSize:9,fill:"var(--muted)"}} axisLine={false} tickLine={false} width={38}/><Tooltip contentStyle={{background:"var(--nav)",border:0,borderRadius:8,color:"#fff",fontSize:10}} formatter={(value)=>[`$${Number(value).toFixed(2)}`,"Sample price"]}/><Line type="monotone" dataKey="price" stroke="var(--brand)" strokeWidth={2.5} dot={{r:2.5,fill:"var(--brand)",strokeWidth:0}} activeDot={{r:4}}/></LineChart></ResponsiveContainer></div>;
+export interface AiProviderErrorOptions {
+  retryable?: boolean;
+  cause?: unknown;
 }
 
-function ResearchReport({stock}:{stock:Stock}){return <><section className="report-disclaimer"><b>Demo analysis based on sample data. Not investment advice.</b><p>Sample content · Scenario, not forecast · Requires independent verification.</p></section><div className="report-layout"><aside className="report-index"><p>IN THIS REPORT</p>{stock.report.map((r,i)=><a href={`#report-${i}`} key={r.title}>{String(i+1).padStart(2,"0")} {r.title}</a>)}</aside><article className="report-content">{stock.report.map((r,i)=><details className={`report-section ${r.title==="Bull Scenario"?"bull":r.title==="Bear Scenario"?"bear":""}`} id={`report-${i}`} key={r.title} open={i<2}><summary><span>{String(i+1).padStart(2,"0")}</span><h2>{r.title}</h2></summary><div>{(r.title==="Bull Scenario"||r.title==="Bear Scenario")&&<Badge tone="inference">Scenario, not forecast</Badge>}<p>{r.body}</p></div></details>)}</article></div></>}
+export type SafeAiErrorCode =
+  | "AI_NOT_CONFIGURED"
+  | "AI_RATE_LIMITED"
+  | "AI_TIMEOUT"
+  | "AI_REFUSED"
+  | "AI_PROVIDER_ERROR"
+  | "AI_SCHEMA_ERROR"
+  | "AI_GROUNDING_ERROR"
+  | "AI_INVALID_REQUEST"
+  | "AI_SEC_UNAVAILABLE";
 
-function Watchlist({items,setItems,openStock}:{items:WatchItem[];setItems:React.Dispatch<React.SetStateAction<WatchItem[]>>;openStock:(t:Ticker)=>void}){
-  return <>
-    <PageTitle eyebrow="IDEA PIPELINE" title="Watchlist" subtitle="Keep curiosity separate from commitment. A watchlist entry is not a recommendation." action={<button className="secondary" onClick={()=>openStock("AAPL")}>＋ Add a stock</button>}/>
-    <section className="card"><div className="table-wrap"><table className="watch-table">
-      <thead><tr><th>Company</th><th>Sample price</th><th>Target watch price</th><th>Reason</th><th>Status</th><th></th></tr></thead>
-      <tbody>{items.map((item,index)=><tr key={item.ticker}>
-        <td><button type="button" onClick={()=>openStock(item.ticker)} aria-label={`Open ${item.ticker} research`} style={{border:0,background:"none",padding:0,textAlign:"left"}}><TickerCell ticker={item.ticker}/></button></td>
-        <td><Money value={stocks[item.ticker].price}/><small className={stocks[item.ticker].change>=0?"positive":"negative"}>{stocks[item.ticker].change>=0?"+":""}{stocks[item.ticker].change}%</small></td>
-        <td><label className="inline-money">$<input aria-label={`${item.ticker} target watch price`} type="number" min="0" value={item.target} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,target:Number(e.target.value)}:x))}/></label></td>
-        <td><input aria-label={`${item.ticker} watch reason`} className="inline-input" value={item.reason} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,reason:e.target.value}:x))}/></td>
-        <td><select aria-label={`${item.ticker} watch status`} value={item.status} onChange={e=>setItems(old=>old.map((x,i)=>i===index?{...x,status:e.target.value as WatchStatus}:x))}><option>Researching</option><option>Watching</option><option>Ready to Buy</option><option>Avoiding</option></select></td>
-        <td><button className="ghost" aria-label={`Remove ${item.ticker}`} onClick={()=>setItems(old=>old.filter(x=>x.ticker!==item.ticker))}>×</button></td>
-      </tr>)}</tbody>
-    </table></div></section>
-    <section className="principle"><span>i</span><div><b>About target watch prices</b><p>This is a user-entered reminder, not an automated signal. Recheck the business and valuation before creating any paper trade.</p></div></section>
-  </>;
+export interface AiHealthSnapshot {
+  runtime: "cloudflare" | "node";
+  configured: boolean;
+  modelConfigured: boolean;
+  rateLimitConfigured: boolean;
+  promptVersion: string;
+  lastDiagnosticCode?: SafeAiErrorCode;
+  checkedAt: string;
 }
 
-function BuyChecklist({locale,ticker,setTicker,drafts,setDrafts,trades,setTrades,account,setAccount,portfolioValue,navigate,notify}:{locale:Locale;ticker:Ticker;setTicker:(t:Ticker)=>void;drafts:Partial<Record<Ticker,Checklist>>;setDrafts:React.Dispatch<React.SetStateAction<Partial<Record<Ticker,Checklist>>>>;trades:Trade[];setTrades:React.Dispatch<React.SetStateAction<Trade[]>>;account:AccountLedger;setAccount:React.Dispatch<React.SetStateAction<AccountLedger>>;portfolioValue:number;navigate:(v:View)=>void;notify:(s:string)=>void}){
-  const form=drafts[ticker]??emptyChecklist;
-  const set=(key:keyof Checklist,value:string)=>setDrafts(old=>({...old,[ticker]:{...(old[ticker]??emptyChecklist),[key]:value}}));
-  const plan=planTrade(ticker,stocks[ticker].price,Number(form.weight),portfolioValue,account.cashBalance);
-  const readiness=calculateReadiness(form,plan,account.cashBalance); const {score,completedCount:complete,warnings:rawWarnings}=readiness;
-  const warnings=rawWarnings.map(w=>({...w,message:checklistWarningText(w.code,w.severity,locale,w.message)}));
-  useEffect(()=>{
-    document.querySelector<HTMLSelectElement>(".checklist-form .section-head select")?.setAttribute("aria-label",locale==="zh"?"检查清单股票代码":"Checklist ticker");
-    const warningRegion=document.querySelector<HTMLElement>(".checklist-side .warnings");
-    warningRegion?.setAttribute("role","status");warningRegion?.setAttribute("aria-live","polite");warningRegion?.setAttribute("aria-atomic","true");
-  },[locale]);
-  const create=(e:FormEvent)=>{e.preventDefault();if(score<60||!readiness.isValid){notify(warnings.find(w=>w.severity==="serious")?.message??"Complete every required checklist field before creating a paper trade");return;}const now=new Date().toISOString();const trade:Trade={id:Date.now(),ticker,buyPrice:plan.price,shares:plan.shares,date:now.slice(0,10),intendedWeightPercent:Number(form.weight),actualWeightPercentAtEntry:plan.actualWeightPercent,buyDriver:form.driver,upcomingEventStatus:form.event,targetPrice:Number(form.target),maximumLossPercent:Number(form.maxLoss),thesis:form.why,invalidationCondition:form.invalidation,exitPlan:form.exit,expectedHoldingPeriod:form.holding,checklistScoreAtEntry:score,checklistWarningsAtEntry:warnings.map(w=>({...w})),createdAt:now};try{setAccount(applyPurchase(account,trade));setTrades([...trades,trade]);notify(`Paper trade created with ${plan.shares} sample shares`);navigate("portfolio")}catch{notify("The planned paper trade exceeds available sample cash")}};
-  return <><PageTitle eyebrow="DECISION CHECK" title="Buy Checklist" subtitle="Slow the decision down. Write a falsifiable thesis before you simulate a position."/><div className="checklist-layout"><form className="card checklist-form" onSubmit={create}><div className="section-head"><div><p className="eyebrow">USER INPUT</p><h2>Investment plan</h2></div><select value={ticker} onChange={e=>setTicker(e.target.value as Ticker)}>{tickerList.map(t=><option key={t}>{t}</option>)}</select></div><Field label="1. Why am I buying this stock?" hint="Use business evidence, not a price prediction."><textarea value={form.why} onChange={e=>set("why",e.target.value)} placeholder="I believe… because…"/></Field><div className="form-row"><Field label="2. Expected holding period"><select value={form.holding} onChange={e=>set("holding",e.target.value)}><option value="">Select period</option><option>Under 3 months</option><option>3–6 months</option><option>6–12 months</option><option>1–3 years</option><option>3+ years</option></select></Field><Field label="3. Maximum acceptable loss"><div className="suffix-input"><input type="number" min="0" max="100" value={form.maxLoss} onChange={e=>set("maxLoss",e.target.value)} placeholder="10"/><span>%</span></div></Field></div><Field label="4. What would prove my thesis wrong?" hint="Make this observable and specific."><textarea value={form.invalidation} onChange={e=>set("invalidation",e.target.value)} placeholder="My thesis is invalid if…"/></Field><div className="form-row"><Field label="5. Portfolio allocation"><div className="suffix-input"><input type="number" min="0" max="100" value={form.weight} onChange={e=>set("weight",e.target.value)} placeholder="8"/><span>%</span></div></Field><Field label="6. Primary buying driver"><select value={form.driver} onChange={e=>set("driver",e.target.value)}><option value="">Select driver</option><option>Fundamentals</option><option>Recent price movement</option><option>Both</option></select></Field></div><div className="form-row"><Field label="7. Earnings or major event approaching?"><select value={form.event} onChange={e=>set("event",e.target.value)}><option value="">Select answer</option><option>Yes</option><option>No</option><option>Not sure</option></select></Field><Field label="8. Target price"><div className="prefix-input"><span>$</span><input type="number" min="0" value={form.target} onChange={e=>set("target",e.target.value)} placeholder={String(Math.round(stocks[ticker].price*1.15))}/></div></Field></div><Field label="9. What is my exit plan?"><textarea value={form.exit} onChange={e=>set("exit",e.target.value)} placeholder="I will exit or reassess when…"/></Field><button className="primary full" type="submit" disabled={!readiness.isValid||score<60}>Confirm & create paper trade →</button></form><aside className="checklist-side"><section className="card readiness"><p className="eyebrow">SYSTEM CALCULATION</p><div className="readiness-number"><b>{score}</b><span>/100</span></div><h2>{score>=80?"Checklist substantially complete":score>=60?"Review warnings before proceeding":"Needs more thought"}</h2><div className="progress large"><i style={{width:`${score}%`}}/></div><p>{complete} of 9 prompts completed. Score rewards completeness, falsifiability, and conservative risk limits.</p></section><section className={`card warnings ${warnings.length?"has-warnings":""}`}><p className="eyebrow">RISK CHECKS</p><h2>{warnings.length?`${warnings.length} item${warnings.length>1?"s":""} to review`:"No active warnings"}</h2>{warnings.length?<ul>{warnings.map((w,i)=><li key={`${w.code}-${i}`}><b>{w.severity==="serious"?"Blocks trade: ":"Review: "}</b>{w.message}</li>)}</ul>:<p>Your current inputs are within the prototype guardrails.</p>}</section><section className="card confirmation"><p className="eyebrow">CONFIRMATION SUMMARY</p><h3>{ticker} paper trade</h3><dl><dt>Sample price</dt><dd><Money value={plan.price}/></dd><dt>Estimated shares</dt><dd>{plan.shares}</dd><dt>Estimated investment</dt><dd><Money value={plan.purchaseCost}/></dd><dt>Cash after trade</dt><dd><Money value={plan.cashAfter}/></dd><dt>Actual portfolio weight</dt><dd>{plan.actualWeightPercent.toFixed(1)}%</dd><dt>Maximum loss</dt><dd>{form.maxLoss||"—"}%</dd></dl><p><b>Thesis:</b> {form.why||"Not entered"}</p><p><b>Invalidation:</b> {form.invalidation||"Not entered"}</p><p><b>Exit plan:</b> {form.exit||"Not entered"}</p></section></aside></div></>;
+export interface AiRequestLog {
+  requestId: string;
+  ticker: Ticker;
+  model: string;
+  promptVersion: string;
+  inputSourceCount: number;
+  latencyMs: number;
+  tokenUsage?: number;
+  status: AiStatus;
+  diagnosticCode?: SafeAiErrorCode;
 }
 
-function Field({label,hint,children}:{label:string;hint?:string;children:React.ReactNode}){return <label className="field"><b>{label}</b>{hint&&<small>{hint}</small>}{children}</label>}
-
-function Portfolio({trades,setTrades,account,setAccount,portfolioValue,navigate,notify}:{trades:Trade[];setTrades:React.Dispatch<React.SetStateAction<Trade[]>>;account:AccountLedger;setAccount:React.Dispatch<React.SetStateAction<AccountLedger>>;portfolioValue:number;navigate:(v:View)=>void;notify:(s:string)=>void}){
-  const summary=summarizePortfolio(trades,stocks,account),active=summary.openTrades;
-  const close=(id:number)=>{try{const result=closeTrade(account,trades,id,stocks[trades.find(t=>t.id===id)!.ticker].price,new Date().toISOString());setAccount(result.account);setTrades(result.trades);notify("Paper position closed — add your reflection next");setTimeout(()=>navigate("journal"),600)}catch{notify("This position could not be closed")}};
-  return <><PageTitle eyebrow="NO REAL FUNDS" title="Paper Portfolio" subtitle="Track decisions and outcomes without connecting a brokerage account." action={<button className="primary" onClick={()=>navigate("checklist")}>＋ New paper trade</button>}/><div className="metric-grid"><Metric label="Portfolio value" value={<Money value={portfolioValue}/>} delta={`Includes $${account.cashBalance.toLocaleString()} sample cash`}/><Metric label="Invested capital" value={<Money value={summary.invested}/>} delta={`${active.length} open positions`}/><Metric label="Unrealized P/L" value={<span className={summary.unrealizedPnL>=0?"positive":"negative"}>{summary.unrealizedPnL>=0?"+":""}<Money value={summary.unrealizedPnL}/></span>} delta={`${(summary.unrealizedPnL/Math.max(summary.invested,1)*100).toFixed(2)}% on invested capital`}/><Metric label="Realized P/L" value={<span className={summary.realizedPnL>=0?"positive":"negative"}>{summary.realizedPnL>=0?"+":""}<Money value={summary.realizedPnL}/></span>} delta={`Cash available: $${account.cashBalance.toFixed(2)}`}/></div><section className="card portfolio-table"><div className="section-head"><div><p className="eyebrow">OPEN PAPER TRADES</p><h2>Positions</h2></div><Badge tone="input">User-created records</Badge></div><div className="table-wrap"><table><thead><tr><th>Company</th><th>Cost basis</th><th>Current value</th><th>Return</th><th>Weight</th><th>Risk plan</th><th></th></tr></thead><tbody>{active.map(t=>{const current=stocks[t.ticker].price*t.shares,ret=(stocks[t.ticker].price/t.buyPrice-1)*100;return <tr key={t.id}><td><TickerCell ticker={t.ticker}/><small>{t.shares} shares · {t.date}</small></td><td><Money value={t.buyPrice*t.shares}/><small>${t.buyPrice.toFixed(2)} / share</small></td><td><Money value={current}/><small>${stocks[t.ticker].price.toFixed(2)} / share</small></td><td className={ret>=0?"positive":"negative"}>{ret>=0?"+":""}{ret.toFixed(2)}%</td><td>{(current/portfolioValue*100).toFixed(1)}%</td><td><small>Target ${t.targetPrice.toFixed(0)}<br/>Max loss {t.maximumLossPercent}%</small></td><td><button className="secondary compact" onClick={()=>close(t.id)}>Close & reflect</button></td></tr>})}</tbody></table></div>{!active.length&&<div className="empty-state"><h3>No open paper positions</h3><p>Complete a checklist to create a fully simulated trade.</p></div>}</section><section className="card thesis-list"><p className="eyebrow">THESIS MONITOR</p><h2>What must remain true</h2>{active.map(t=><div key={t.id}><TickerCell ticker={t.ticker}/><p>{t.thesis}</p><span><b>Invalidation:</b> {t.invalidationCondition||"Review needed"}</span></div>)}</section></>;
-}
-
-function Journal({trades,saved,setSaved,entries,setEntries}:{trades:Trade[];saved:boolean;setSaved:(v:boolean)=>void;entries:Record<string,JournalRecord>;setEntries:React.Dispatch<React.SetStateAction<Record<string,JournalRecord>>>}){
-  const closed=trades.filter(t=>t.closedAt||t.closed);const [selected,setSelected]=useState(closed[closed.length-1]?.id||0);
-  const errors=["Chasing momentum","Oversized position","Trading before earnings","No clear exit plan","Holding a broken thesis","Selling winners too early","Averaging down without evidence","Emotional decision","Poor research"];
-  const selectedTrade=closed.find(t=>t.id===selected);
-  const makeDraft=(trade?:Trade):JournalRecord=>entries[String(trade?.id??0)]??{tradeId:trade?.id??0,buyReason:trade?.thesis??"",sellReason:"",emotionalState:"Calm",whatWentWell:"",whatWentWrong:"",thesisCorrect:"Mostly",processCorrect:"Yes",lessonsLearned:"",mistakeCategories:[]};
-  const [draft,setDraft]=useState<JournalRecord>(()=>makeDraft(selectedTrade));
-  const selectTrade=(trade:Trade)=>{setSelected(trade.id);setDraft(makeDraft(trade));setSaved(Boolean(entries[String(trade.id)]))};
-  const update=(key:keyof JournalRecord,value:string|string[])=>setDraft(old=>({...old,[key]:value,tradeId:selected}));
-  const save=(event:FormEvent)=>{event.preventDefault();if(!selectedTrade||draft.tradeId!==selected)return;setEntries(old=>({...old,[String(selected)]:{...draft,tradeId:selected}}));setSaved(true)};
-  if(!closed.length)return <><PageTitle eyebrow="LEARN FROM THE PROCESS" title="Trade Journal" subtitle="Separate a good outcome from a good decision."/><section className="card empty-state"><h2>No closed paper trades yet</h2><p>Close a paper position before writing a post-trade reflection.</p></section></>;
-  return <><PageTitle eyebrow="LEARN FROM THE PROCESS" title="Trade Journal" subtitle="Separate a good outcome from a good decision. Both deserve an honest review."/><div className="journal-layout"><aside className="card trade-selector"><p className="eyebrow">CLOSED TRADES</p>{closed.map(t=><button key={t.id} className={selected===t.id?"active":""} onClick={()=>selectTrade(t)}><TickerCell ticker={t.ticker}/><span className={(t.realizedPnL??0)>=0?"positive":"negative"}>{(t.realizedReturnPercent??0).toFixed(1)}%</span></button>)}</aside>{selectedTrade&&<form className="card journal-form" onSubmit={save}><div className="section-head"><div><p className="eyebrow">USER REFLECTION</p><h2>{selectedTrade.ticker} post-trade review</h2><small>Bought {selectedTrade.date} at ${selectedTrade.buyPrice.toFixed(2)} · Sold {selectedTrade.closedAt?.slice(0,10)??"—"} at ${selectedTrade.sellPrice?.toFixed(2)??"—"} · Realized <span className={(selectedTrade.realizedPnL??0)>=0?"positive":"negative"}><Money value={selectedTrade.realizedPnL??0}/></span></small></div><Badge tone="input">Private to this device</Badge></div><div className="form-row"><Field label="Buy reason"><textarea value={draft.buyReason} onChange={e=>update("buyReason",e.target.value)}/></Field><Field label="Sell reason"><textarea value={draft.sellReason} onChange={e=>update("sellReason",e.target.value)} placeholder="Why did you close the position?"/></Field></div><div className="form-row"><Field label="Emotional state"><select value={draft.emotionalState} onChange={e=>update("emotionalState",e.target.value)}><option>Calm</option><option>Confident</option><option>Anxious</option><option>Fearful</option><option>Impulsive</option></select></Field><Field label="Was the original thesis correct?"><select value={draft.thesisCorrect} onChange={e=>update("thesisCorrect",e.target.value)}><option>Yes</option><option>Mostly</option><option>No</option><option>Too early to know</option></select></Field></div><div className="form-row"><Field label="What went well"><textarea value={draft.whatWentWell} onChange={e=>update("whatWentWell",e.target.value)} placeholder="Evidence, sizing, patience…"/></Field><Field label="What went wrong"><textarea value={draft.whatWentWrong} onChange={e=>update("whatWentWrong",e.target.value)} placeholder="Research gaps, timing, behavior…"/></Field></div><Field label="Was the process correct?"><div className="radio-row">{["Yes","Partly","No"].map(value=><label key={value}><input type="radio" checked={draft.processCorrect===value} onChange={()=>update("processCorrect",value)}/> {value}</label>)}</div></Field><Field label="Mistakes to tag"><div className="chip-grid">{errors.map(err=><label key={err}><input type="checkbox" checked={draft.mistakeCategories.includes(err)} onChange={e=>update("mistakeCategories",e.target.checked?[...draft.mistakeCategories,err]:draft.mistakeCategories.filter(item=>item!==err))}/><span>{err}</span></label>)}</div></Field><Field label="Lessons learned"><textarea value={draft.lessonsLearned} onChange={e=>update("lessonsLearned",e.target.value)} placeholder="Next time, I will…"/></Field><button className="primary full" type="submit">{saved?"✓ Reflection saved":"Save reflection"}</button></form>}</div></>;
-}
-
-function Insights({trades,journals}:{trades:Trade[];journals:Record<string,JournalRecord>}){const insight=summarizeInsights(trades,journals);if(!insight.sampleSize)return <><PageTitle eyebrow="YOUR JOURNAL ANALYSIS" title="Insights" subtitle="Process statistics are calculated only from your closed paper trades."/><section className="card empty-state"><h2>No closed paper trades to analyze</h2><p>Close a simulated position and add a journal entry to begin seeing patterns.</p></section></>;return <><PageTitle eyebrow="YOUR JOURNAL ANALYSIS" title="Insights" subtitle={`Patterns from ${insight.sampleSize} closed paper trade${insight.sampleSize===1?"":"s"}. Reflection only, never a prediction.`}/><div className="metric-grid"><Metric label="Win rate" value={`${insight.winRate.toFixed(1)}%`} delta={`${insight.sampleSize} closed paper trade${insight.sampleSize===1?"":"s"}`}/><Metric label="Average gain" value={`${insight.averageGain>=0?"+":""}${insight.averageGain.toFixed(1)}%`} delta={`Sample n=${insight.sampleSize}`}/><Metric label="Average loss" value={`${insight.averageLoss.toFixed(1)}%`} delta={`Sample n=${insight.sampleSize}`}/><Metric label="Profit factor" value={insight.profitFactor===null?"No losses":`${insight.profitFactor.toFixed(2)}×`} delta="Gross gains ÷ gross losses"/></div>{insight.sampleSize>=3&&<div className="two-col insights-grid"><InsightChart title="Performance by duration" eyebrow="HOLDING PERIOD" data={insight.holdingPeriods}/><InsightChart title="Performance by allocation" eyebrow="POSITION SIZE" data={insight.positionSizes}/></div>}<div className="two-col insight-cards">{insight.bestTicker&&<section className="card best"><p className="eyebrow">BEST-PERFORMING TICKER</p><span>01</span><h2>{insight.bestTicker.label}</h2><p>Average closed-trade return: <b>{insight.bestTicker.averageReturn.toFixed(1)}%</b>, sample n={insight.bestTicker.sampleSize}.</p></section>}{insight.mostCommonMistake&&<section className="card mistake"><p className="eyebrow">MOST COMMON MISTAKE</p><span>!</span><h2>{insight.mostCommonMistake[0]}</h2><p>Tagged in <b>{insight.mostCommonMistake[1]}</b> journal reflection{insight.mostCommonMistake[1]===1?"":"s"}.</p></section>}</div><section className="principle"><span>i</span><div><b>{insight.isSmallSample?"Small sample warning":"Process insight"}</b><p>{insight.isSmallSample?"Fewer than three simulated trades are not statistically reliable, so only basic results are shown.":"Use these descriptive patterns to ask better questions, not to forecast future returns."}</p></div></section></>}
-function InsightChart({title,eyebrow,data}:{title:string;eyebrow:string;data:InsightBucket[]}){return <section className="card"><div className="section-head"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2></div><Badge tone="inference">System summary</Badge></div><div className="horizontal-chart">{data.map(item=><div key={item.label}><span>{item.label} (n={item.sampleSize})</span><div><i className={item.averageReturn<0?"loss":""} style={{width:`${Math.min(100,Math.abs(item.averageReturn)*4)}%`}}/></div><b className={item.averageReturn<0?"negative":"positive"}>{item.averageReturn>0?"+":""}{item.averageReturn.toFixed(1)}%</b></div>)}</div></section>}
+export type AiPublicResponse = ResearchResponse;

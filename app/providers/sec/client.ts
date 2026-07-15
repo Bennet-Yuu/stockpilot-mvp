@@ -1,4 +1,5 @@
 import { SecProviderError } from "./errors";
+import { getServerRuntimeConfig } from "../../runtime/serverRuntimeConfig";
 import type { SecHttpClient } from "./types";
 
 export const SEC_SUBMISSIONS_URL = (cik: string): string => `https://data.sec.gov/submissions/CIK${cik}.json`;
@@ -13,20 +14,29 @@ export interface SecRuntimeConfig {
   maxRetries: number;
 }
 
-function numericEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+interface SecRuntimeEnv {
+  SEC_USER_AGENT?: string;
+  SEC_REQUESTS_PER_SECOND?: string;
+  SEC_CACHE_TTL_SECONDS?: string;
+  SEC_TIMEOUT_MS?: string;
+  SEC_MAX_RESPONSE_BYTES?: string;
+}
+
+function numericEnv(env: SecRuntimeEnv, name: keyof SecRuntimeEnv, fallback: number): number {
   const value = Number(env[name]);
   return Number.isFinite(value) ? value : fallback;
 }
 
-export function getSecRuntimeConfig(env: NodeJS.ProcessEnv = process.env): SecRuntimeConfig {
-  const requestsPerSecond = Math.min(10, Math.max(1, Math.floor(Number(env.SEC_REQUESTS_PER_SECOND) || 5)));
-  const cacheTtlSeconds = Math.max(1, Math.floor(Number(env.SEC_CACHE_TTL_SECONDS) || 3600));
+export function getSecRuntimeConfig(env?: SecRuntimeEnv): SecRuntimeConfig {
+  const source = env ?? getServerRuntimeConfig();
+  const requestsPerSecond = Math.min(10, Math.max(1, Math.floor(Number(source.SEC_REQUESTS_PER_SECOND) || 5)));
+  const cacheTtlSeconds = Math.max(1, Math.floor(Number(source.SEC_CACHE_TTL_SECONDS) || 3600));
   return {
-    userAgent: env.SEC_USER_AGENT?.trim() || undefined,
+    userAgent: source.SEC_USER_AGENT?.trim() || undefined,
     requestsPerSecond,
     cacheTtlSeconds,
-    timeoutMs: Math.max(1000, Math.floor(numericEnv(env, "SEC_TIMEOUT_MS", 10000))),
-    maxResponseBytes: Math.max(100_000, Math.floor(numericEnv(env, "SEC_MAX_RESPONSE_BYTES", 8_000_000))),
+    timeoutMs: Math.max(1000, Math.floor(numericEnv(source, "SEC_TIMEOUT_MS", 10000))),
+    maxResponseBytes: Math.max(100_000, Math.floor(numericEnv(source, "SEC_MAX_RESPONSE_BYTES", 8_000_000))),
     maxRetries: 2,
   };
 }

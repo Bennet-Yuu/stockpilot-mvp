@@ -1,6 +1,7 @@
 import { SEC_COMPANY_FACTS_URL, SEC_SUBMISSIONS_URL, FetchSecHttpClient, getSecRuntimeConfig } from "./client";
 import { MemorySecCache, makeSecCacheEntry } from "./cache";
 import { SecProviderError, toSafeSecError } from "./errors";
+import { getLastSecDiagnosticCode, setLastSecDiagnosticCode } from "../../runtime/serverRuntimeConfig";
 import { normalizeFinancials, normalizeRecentFilings, normalizeSnapshot } from "./normalize";
 import { secCompanyFactsSchema, secCompanyFinancialSnapshotSchema, secSubmissionsSchema } from "./schemas";
 import { createSampleSecSnapshot } from "./sample";
@@ -31,7 +32,10 @@ export class SecFilingDataProviderImpl implements SecFilingDataProvider {
     const now = this.clock();
     const fresh = this.cache.getFresh<SecCompanyFinancialSnapshot>(key, now);
     if (fresh) return this.withSource(fresh.value, "cached", "cached", ["Showing a cached SEC snapshot within the configured freshness window."]);
-    if (!this.configured || !this.client) return this.sampleWithStatus(ticker, now, "not-configured", ["SEC source access is not configured; showing sample fallback data without making a request."]);
+    if (!this.configured || !this.client) {
+      setLastSecDiagnosticCode("SEC_NOT_CONFIGURED");
+      return this.sampleWithStatus(ticker, now, "not-configured", ["SEC source access is not configured; showing sample fallback data without making a request."], "SEC_NOT_CONFIGURED");
+    }
 
     try {
       const submissions = await this.getSubmissions(ticker);
@@ -45,13 +49,15 @@ export class SecFilingDataProviderImpl implements SecFilingDataProvider {
       if (!parsed.success) throw new SecProviderError("SEC_INVALID_RESPONSE", "Normalized SEC snapshot failed validation.");
       const validated = parsed.data as unknown as SecCompanyFinancialSnapshot;
       this.cache.set(makeSecCacheEntry(key, validated, "live", this.cacheTtlMs, this.clock()));
+      setLastSecDiagnosticCode(undefined);
       return validated;
     } catch (error) {
       const safe = toSafeSecError(error);
+      setLastSecDiagnosticCode(safe.code === "SEC_INVALID_TICKER" ? "SEC_UNAVAILABLE" : safe.code);
       const stale = this.cache.getStale<SecCompanyFinancialSnapshot>(key, this.clock());
-      if (stale) return this.withSource(stale.value, "stale-cache", "fallback", ["Live SEC data could not be refreshed; showing the last cached snapshot.", this.safeReason(safe)]);
+      if (stale) return this.withSource(stale.value, "stale-cache", "fallback", ["Live SEC data could not be refreshed; showing the last cached snapshot.", this.safeReason(safe)], safe.code === "SEC_INVALID_TICKER" ? "SEC_UNAVAILABLE" : safe.code);
       const status = safe.code === "SEC_RATE_LIMITED" ? "rate-limited" : "unavailable";
-      return this.sampleWithStatus(ticker, this.clock(), status, ["Live SEC data is unavailable; showing sample fallback data.", this.safeReason(safe)]);
+      return this.sampleWithStatus(ticker, this.clock(), status, ["Live SEC data is unavailable; showing sample fallback data.", this.safeReason(safe)], safe.code === "SEC_INVALID_TICKER" ? "SEC_UNAVAILABLE" : safe.code);
     }
   }
 
@@ -96,8 +102,8 @@ export class SecFilingDataProviderImpl implements SecFilingDataProvider {
     return parsed.data;
   }
 
-  private withSource(snapshot: SecCompanyFinancialSnapshot, sourceMode: SecCompanyFinancialSnapshot["sourceMode"], status: SecCompanyFinancialSnapshot["status"], warnings: string[]): SecCompanyFinancialSnapshot {
-    return { ...snapshot, sourceMode, status, warnings: [...snapshot.warnings, ...warnings] };
+  private withSource(snapshot: SecCompanyFinancialSnapshot, sourceMode: SecCompanyFinancialSnapshot["sourceMode"], status: SecCompanyFinancialSnapshot["status"], warnings: string[], diagnosticCode = snapshot.diagnosticCode): SecCompanyFinancialSnapshot {
+    return { ...snapshot, sourceMode, status, warnings: [...snapshot.warnings, ...warnings], diagnosticCode };
   }
 
   private safeReason(error: SecProviderError): string {
@@ -107,15 +113,20 @@ export class SecFilingDataProviderImpl implements SecFilingDataProvider {
     return "The provider returned a safe fallback status; no raw error details are exposed.";
   }
 
-  private sampleWithStatus(ticker: Ticker, now: number, status: "not-configured" | "rate-limited" | "unavailable", warnings: string[]): SecCompanyFinancialSnapshot {
-    return { ...createSampleSecSnapshot(ticker, now, warnings), status };
+  private sampleWithStatus(ticker: Ticker, now: number, status: "not-configured" | "rate-limited" | "unavailable", warnings: string[], diagnosticCode = getLastSecDiagnosticCode()): SecCompanyFinancialSnapshot {
+    return { ...createSampleSecSnapshot(ticker, now, warnings), status, diagnosticCode };
   }
 }
 
-export const secFilingDataProvider: SecFilingDataProvider = new SecFilingDataProviderImpl();
+const sharedSecCache = new MemorySecCache();
 
 export function createSecProvider(options: SecProviderOptions = {}): SecFilingDataProviderImpl {
-  return new SecFilingDataProviderImpl(options);
+  return new SecFilingDataProviderImpl({ ...options, cache: options.cache ?? sharedSecCache });
+}
+
+/** Create a provider after the Worker has injected the current request config. */
+export function getSecFilingDataProvider(): SecFilingDataProviderImpl {
+  return createSecProvider();
 }
 
 export { normalizeFinancials, normalizeRecentFilings };

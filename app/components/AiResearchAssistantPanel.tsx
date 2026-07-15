@@ -35,7 +35,16 @@ function ClaimList({ claims, sources, locale }: { claims: ResearchClaim[]; sourc
 }
 
 function SourceList({ sources, locale }: { sources: ResearchSource[]; locale: Locale }) {
-  return <div className="ai-source-list"><div className="section-head"><div><p className="eyebrow">SOURCES</p><h3>{locale === "zh" ? "可打开的 SEC 来源" : "Open SEC sources"}</h3></div><span className="badge fact">SEC</span></div>{sources.map((source, index) => <div className="ai-source" id={`ai-source-${index + 1}`} key={source.sourceId}><span className="ai-source-number">[{index + 1}]</span><div><b>{source.label}</b><small>{source.metric ? `${source.metric} · ` : ""}{source.form ?? "SEC identity"}{source.periodEnd ? ` · ${source.periodEnd}` : ""}{source.unit ? ` · ${source.unit}` : ""}{source.derived ? ` · ${locale === "zh" ? "系统推导" : "System-derived"}` : ""}</small></div><a href={source.sourceUrl} target="_blank" rel="noreferrer">{locale === "zh" ? "打开" : "Open"}</a></div>)}</div>;
+  const index = new Map(sources.map((source, position) => [source.sourceId, position + 1]));
+  const sourceById = new Map(sources.map((source) => [source.sourceId, source]));
+  const underlyingLabel = (sourceId: string): string => {
+    const source = sourceById.get(sourceId);
+    if (!source) return sourceId;
+    if (source.metric === "Operating Cash Flow") return locale === "zh" ? "OCF 来源" : "OCF source";
+    if (source.metric === "Capital Expenditure") return locale === "zh" ? "CapEx 来源" : "CapEx source";
+    return source.metric ?? source.label;
+  };
+  return <div className="ai-source-list"><div className="section-head"><div><p className="eyebrow">SOURCES</p><h3>{locale === "zh" ? "可打开的 SEC 来源" : "Open SEC sources"}</h3></div><span className="badge fact">SEC</span></div>{sources.map((source, indexPosition) => <div className="ai-source" id={`ai-source-${indexPosition + 1}`} key={source.sourceId}><span className="ai-source-number">[{indexPosition + 1}]</span><div><b>{source.label}</b><small>{source.metric ? `${source.metric} · ` : ""}{source.form ?? "SEC identity"}{source.periodEnd ? ` · ${source.periodEnd}` : ""}{source.unit ? ` · ${source.unit}` : ""}{source.derived ? ` · ${locale === "zh" ? "系统推导" : "System-derived"}` : ""}</small>{source.derived && source.derivedFrom && source.derivedFrom.length > 0 && <div className="ai-derived-sources"><span>{locale === "zh" ? "来源链路：" : "Derived from: "}</span>{source.derivedFrom.map((sourceId) => { const number = index.get(sourceId); return number ? <a key={sourceId} href={`#ai-source-${number}`} title={sourceId}>{underlyingLabel(sourceId)}</a> : <span key={sourceId}>{underlyingLabel(sourceId)}</span>; })}</div>}</div><a href={source.sourceUrl} target="_blank" rel="noreferrer">{locale === "zh" ? "打开" : "Open"}</a></div>)}</div>;
 }
 
 export default function AiResearchAssistantPanel({ ticker, locale }: { ticker: Ticker; locale: Locale }) {

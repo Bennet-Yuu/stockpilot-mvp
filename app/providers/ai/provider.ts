@@ -6,7 +6,7 @@ import { aiPromptVersion, type ResearchBrief } from "./schemas";
 import type { ResearchAssistantInput, ResearchAssistantProvider, ResearchAssistantResult } from "./types";
 
 function makeMockBrief(input: ResearchAssistantInput): ResearchBrief {
-  const sourceIds = input.evidence.sources.slice(0, 3).map((source) => source.sourceId);
+  const sourceIds = input.evidence.sources.slice(0, 2).map((source) => source.sourceId);
   const primary = sourceIds[0] ?? `sec:identity:${input.ticker}`;
   const second = sourceIds[1] ?? primary;
   const chinese = input.language === "zh";

@@ -5,6 +5,7 @@ import { AiProviderError } from "./errors";
 import { researchBriefSchema, type ResearchBrief } from "./schemas";
 import { buildResearchPrompt, researchSystemPrompt } from "./prompt";
 import type { ResearchEvidenceBundle, ResearchLanguage } from "./schemas";
+import type { AiTokenUsage } from "./types";
 
 export interface AiRuntimeConfig {
   apiKey?: string;
@@ -43,7 +44,48 @@ export function getAiHealthSnapshot(): { runtime: "cloudflare" | "node"; configu
 
 export interface OpenAiResearchResult {
   brief: ResearchBrief;
-  tokenUsage?: number;
+  tokenUsage?: AiTokenUsage;
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function safeTokenCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
+}
+
+function hasRefusalOutput(response: UnknownRecord): boolean {
+  const output = Array.isArray(response.output) ? response.output : [];
+  return output.some((item) => {
+    if (!isRecord(item) || item.type !== "message" || !Array.isArray(item.content)) return false;
+    return item.content.some((content) => isRecord(content) && content.type === "refusal");
+  });
+}
+
+function isIncompleteResponse(response: UnknownRecord): boolean {
+  if (response.status === "incomplete" || response.status === "failed" || (response.incomplete_details !== null && response.incomplete_details !== undefined)) return true;
+  const output = Array.isArray(response.output) ? response.output : [];
+  return output.some((item) => isRecord(item) && item.type === "message" && (item.status === "incomplete" || item.status === "in_progress"));
+}
+
+export function parseOpenAiResearchResponse(response: unknown): OpenAiResearchResult {
+  if (!isRecord(response)) throw new AiProviderError("AI_PROVIDER_ERROR", "The AI provider returned an unavailable response.");
+  if (hasRefusalOutput(response)) throw new AiProviderError("AI_REFUSED", "The AI provider refused this research request.");
+  if (isIncompleteResponse(response)) throw new AiProviderError("AI_PROVIDER_ERROR", "The AI provider returned an incomplete response.", { retryable: true });
+  const parsed = researchBriefSchema.safeParse(response.output_parsed);
+  if (!parsed.success) throw new AiProviderError("AI_SCHEMA_ERROR", "OpenAI returned an invalid structured response.");
+  const usage = isRecord(response.usage)
+    ? {
+        inputTokens: safeTokenCount(response.usage.input_tokens),
+        outputTokens: safeTokenCount(response.usage.output_tokens),
+        totalTokens: safeTokenCount(response.usage.total_tokens),
+      }
+    : undefined;
+  const hasUsage = usage && Object.values(usage).some((value) => value !== undefined);
+  return { brief: parsed.data, tokenUsage: hasUsage ? usage : undefined };
 }
 
 export async function requestOpenAiResearch(input: { bundle: ResearchEvidenceBundle; language: ResearchLanguage; question?: string }): Promise<OpenAiResearchResult> {
@@ -62,9 +104,7 @@ export async function requestOpenAiResearch(input: { bundle: ResearchEvidenceBun
       store: false,
       max_output_tokens: config.maxOutputTokens,
     });
-    const parsed = researchBriefSchema.safeParse(response.output_parsed);
-    if (!parsed.success) throw new AiProviderError("AI_SCHEMA_ERROR", "OpenAI returned an invalid structured response.");
-    return { brief: parsed.data, tokenUsage: response.usage?.total_tokens };
+    return parseOpenAiResearchResponse(response);
   } catch (error) {
     if (error instanceof AiProviderError) throw error;
     if (Date.now() - startedAt >= config.timeoutMs) throw new AiProviderError("AI_TIMEOUT", "The AI provider timed out.", { retryable: true, cause: error });

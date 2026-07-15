@@ -14,6 +14,12 @@ export interface ResearchAssistantInput {
   evidence: ResearchEvidenceBundle;
 }
 
+export interface AiTokenUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
 export interface ResearchAssistantResult {
   status: Extract<AiStatus, "success" | "cached">;
   aiMode: Extract<AiMode, "ai-live" | "ai-cached">;
@@ -21,7 +27,7 @@ export interface ResearchAssistantResult {
   brief: ResearchBrief;
   warnings: string[];
   latencyMs: number;
-  tokenUsage?: number;
+  tokenUsage?: AiTokenUsage;
 }
 
 export interface ResearchAssistantProvider {
@@ -61,7 +67,7 @@ export interface AiRequestLog {
   promptVersion: string;
   inputSourceCount: number;
   latencyMs: number;
-  tokenUsage?: number;
+  tokenUsage?: AiTokenUsage;
   status: AiStatus;
   diagnosticCode?: SafeAiErrorCode;
 }

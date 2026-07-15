@@ -62,7 +62,7 @@ export async function createAiResearchResponse(request: Request, rawTicker: unkn
     return json({ ticker, status: "not-configured", sourceMode: snapshot.sourceMode, aiMode: "not-configured", cached: false, promptVersion: aiPromptVersion, sources: [], warnings: ["AI Research Assistant is not configured. No OpenAI request was made.", "Rules-based research questions are available in the UI; they are not AI-generated.", ...snapshot.warnings], diagnosticCode: "AI_NOT_CONFIGURED" });
   }
 
-  const identifier = hashClientIdentifier(request.headers.get("x-forwarded-for") ?? request.headers.get("cf-connecting-ip") ?? undefined);
+  const identifier = hashClientIdentifier(request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? undefined);
   const rate = getAiRateLimiter(aiConfig.requestsPerMinute).take(identifier);
   if (!rate.allowed) {
     const error = new AiProviderError("AI_RATE_LIMITED", "AI rate limit reached.", { cause: rate.retryAfterSeconds });

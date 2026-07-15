@@ -39,8 +39,18 @@ function sourceId(prefix: "metric" | "derived", fact: SecNormalizedFact, seen: S
   return candidate;
 }
 
+function sameProvenance(source: ResearchSource, item: NonNullable<SecNormalizedFact["derivedFrom"]>[number]): boolean {
+  return source.taxonomy === item.taxonomy
+    && source.concept === item.concept
+    && normalizedUnit(source.unit ?? "") === normalizedUnit(item.unit)
+    && source.form === item.form
+    && source.accessionNumber === item.accessionNumber
+    && source.periodStart === item.periodStart
+    && source.periodEnd === item.periodEnd;
+}
+
 function findDerivedSourceId(item: NonNullable<SecNormalizedFact["derivedFrom"]>[number], sources: ResearchSource[]): string | undefined {
-  return sources.find((source) => source.accessionNumber === item.accessionNumber && source.periodEnd === item.periodEnd)?.sourceId;
+  return sources.find((source) => sameProvenance(source, item))?.sourceId;
 }
 
 function factSource(fact: SecNormalizedFact, id: string, existingSources: ResearchSource[]): ResearchSource {
@@ -50,9 +60,14 @@ function factSource(fact: SecNormalizedFact, id: string, existingSources: Resear
     sourceType: fact.provenanceType === "system-derived" ? "derived" : "metric",
     label: `${fact.metric} for ${fact.periodEnd}`,
     metric: fact.metric,
+    taxonomy: fact.taxonomy,
+    concept: fact.concept,
     value: fact.value,
     unit: fact.unit,
+    periodStart: fact.periodStart,
     periodEnd: fact.periodEnd,
+    fiscalYear: fact.fiscalYear,
+    fiscalPeriod: fact.fiscalPeriod,
     filedAt: fact.filedAt,
     form: fact.form,
     accessionNumber: fact.accessionNumber,
@@ -66,6 +81,8 @@ function factRecord(fact: SecNormalizedFact, id: string, existingSources: Resear
   return {
     sourceId: id,
     metric: fact.metric,
+    taxonomy: fact.taxonomy,
+    concept: fact.concept,
     value: fact.value,
     unit: fact.unit,
     periodEnd: fact.periodEnd,
@@ -85,6 +102,22 @@ function addFact(fact: SecNormalizedFact, seen: Set<string>, facts: ResearchEvid
   facts.push(factRecord(fact, id, sources));
   sources.push(factSource(fact, id, sources));
   return id;
+}
+
+function assertDerivedSourceIntegrity(facts: ResearchEvidenceFact[], sources: ResearchSource[]): void {
+  const sourceMap = new Map(sources.map((source) => [source.sourceId, source]));
+  for (const source of sources.filter((value) => value.derived)) {
+    const derivedFrom = source.derivedFrom ?? [];
+    if (source.metric !== "Free Cash Flow" || derivedFrom.length !== 2 || new Set(derivedFrom).size !== 2) throw new Error("System-derived Free Cash Flow must reference exactly two distinct source facts.");
+    const underlying = derivedFrom.map((sourceId) => sourceMap.get(sourceId));
+    if (underlying.some((value) => !value || value.derived || value.value === undefined)) throw new Error("System-derived Free Cash Flow references an unavailable or derived source.");
+    const metrics = new Set(underlying.map((value) => value?.metric));
+    if (!metrics.has("Operating Cash Flow") || !metrics.has("Capital Expenditure") || metrics.size !== 2) throw new Error("System-derived Free Cash Flow must reference Operating Cash Flow and Capital Expenditure only.");
+    if (underlying.some((value) => !value || value.taxonomy !== source.taxonomy || !value.concept || value.accessionNumber !== source.accessionNumber || value.periodStart !== source.periodStart || value.periodEnd !== source.periodEnd || normalizedUnit(value.unit ?? "") !== normalizedUnit(source.unit ?? "") || value.form !== source.form)) throw new Error("System-derived Free Cash Flow provenance does not match the underlying taxonomy, concept, period, unit, form, and accession.");
+  }
+  for (const fact of facts.filter((value) => value.provenanceType === "system-derived")) {
+    if (fact.metric !== "Free Cash Flow" || fact.derivedFrom?.length !== 2 || new Set(fact.derivedFrom).size !== 2) throw new Error("System-derived Free Cash Flow evidence must retain two distinct source IDs.");
+  }
 }
 
 function metricFacts(metric: SecFinancialMetric): SecNormalizedFact[] {
@@ -108,9 +141,14 @@ function buildTrend(metric: TrendMetric, facts: SecNormalizedFact[], seen: Set<s
         sourceType: "trend",
         label: `${metric} trend for ${fact.periodEnd}`,
         metric,
+        taxonomy: fact.taxonomy,
+        concept: fact.concept,
         value: fact.value,
         unit: fact.unit,
+        periodStart: fact.periodStart,
         periodEnd: fact.periodEnd,
+        fiscalYear: fact.fiscalYear,
+        fiscalPeriod: fact.fiscalPeriod,
         filedAt: fact.filedAt,
         form: fact.form,
         accessionNumber: fact.accessionNumber,
@@ -157,6 +195,7 @@ export function buildResearchEvidenceBundle(snapshot: SecCompanyFinancialSnapsho
     return { sourceId: id, form: filing.form, filingDate: filing.filingDate, reportDate: filing.reportDate, accessionNumber: filing.accessionNumber, sourceUrl: filing.sourceUrl };
   });
 
+  assertDerivedSourceIntegrity(facts, sources);
   const base = { ticker: snapshot.ticker as Ticker, companyName: snapshot.companyName, cik: snapshot.cik, asOf: snapshot.asOf, sourceMode: snapshot.sourceMode as "live" | "cached" | "stale-cache", generatedFromSnapshotAt: snapshot.fetchedAt, facts, annualTrends, recentFilings, sources };
   const evidenceHash = hashText(JSON.stringify(base));
   return researchEvidenceBundleSchema.parse({ ...base, evidenceHash });

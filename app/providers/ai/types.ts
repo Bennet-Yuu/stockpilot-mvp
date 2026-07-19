@@ -28,21 +28,39 @@ export interface ResearchAssistantResult {
   warnings: string[];
   latencyMs: number;
   tokenUsage?: AiTokenUsage;
+  diagnostic?: AiRequestDiagnostic;
 }
 
 export interface ResearchAssistantProvider {
   generateResearchBrief(input: ResearchAssistantInput): Promise<ResearchAssistantResult>;
 }
 
+export interface AiRequestDiagnostic {
+  clientRequestId?: string;
+  openaiRequestId?: string;
+  errorClass?: string;
+  httpStatus?: number;
+  apiCode?: string;
+  apiType?: string;
+}
+
 export interface AiProviderErrorOptions {
   retryable?: boolean;
   cause?: unknown;
+  diagnostic?: AiRequestDiagnostic;
 }
 
 export type SafeAiErrorCode =
   | "AI_NOT_CONFIGURED"
+  | "AI_INVALID_API_KEY"
+  | "AI_PERMISSION_DENIED"
+  | "AI_MODEL_NOT_FOUND"
+  | "AI_INSUFFICIENT_QUOTA"
   | "AI_RATE_LIMITED"
   | "AI_TIMEOUT"
+  | "AI_NETWORK_ERROR"
+  | "AI_SERVER_ERROR"
+  | "AI_BAD_REQUEST"
   | "AI_REFUSED"
   | "AI_PROVIDER_ERROR"
   | "AI_SCHEMA_ERROR"

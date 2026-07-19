@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { buildResearchEvidenceBundle } from "../app/providers/ai/evidence";
 import { validateResearchBrief } from "../app/providers/ai/grounding";
 import { OpenAIResearchAssistantProvider } from "../app/providers/ai/provider";
+import { AiProviderError, toSafeAiError } from "../app/providers/ai/errors";
 import { aiPromptVersion } from "../app/providers/ai/schemas";
 import { setServerRuntimeConfig } from "../app/runtime/serverRuntimeConfig";
 import { createSecProvider } from "../app/providers/sec/provider";
@@ -28,6 +29,12 @@ function value(name: string, localEnv: Record<string, string>): string | undefin
 
 function assertCondition(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function safeErrorFields(error: unknown): string {
+  const safe = error instanceof AiProviderError ? error : toSafeAiError(error);
+  const diagnostic = safe.diagnostic;
+  return `diagnosticCode=${safe.code} errorClass=${diagnostic?.errorClass ?? "unknown"} httpStatus=${diagnostic?.httpStatus ?? "none"} apiCode=${diagnostic?.apiCode ?? "none"} apiType=${diagnostic?.apiType ?? "none"} clientRequestId=${diagnostic?.clientRequestId ?? "none"} openaiRequestId=${diagnostic?.openaiRequestId ?? "none"} retryable=${safe.retryable}`;
 }
 
 function assertSourceIntegrity(ticker: Ticker, evidence: ReturnType<typeof buildResearchEvidenceBundle>): void {
@@ -97,12 +104,13 @@ async function main(): Promise<void> {
     assertCondition(result.brief.promptVersion === aiPromptVersion, `${ticker}: unexpected prompt version`);
     const tokenUsage = result.tokenUsage;
     const unavailableMetrics = Object.entries(snapshot.metrics).filter(([, metric]) => metric.status === "unavailable").map(([metric]) => metric).join(",") || "none";
-    console.log(`${ticker}: model=${result.brief.model} status=${result.status} sourceMode=${snapshot.sourceMode} latencyMs=${Math.max(result.latencyMs, Date.now() - started)} inputTokens=${tokenUsage?.inputTokens ?? "unknown"} outputTokens=${tokenUsage?.outputTokens ?? "unknown"} totalTokens=${tokenUsage?.totalTokens ?? "unknown"} sources=${evidence.sources.length} cached=${result.cached} grounding=passed unavailableMetrics=${unavailableMetrics}`);
+    const diagnostic = result.diagnostic;
+    console.log(`${ticker}: model=${result.brief.model} status=${result.status} sourceMode=${snapshot.sourceMode} latencyMs=${Math.max(result.latencyMs, Date.now() - started)} inputTokens=${tokenUsage?.inputTokens ?? "unknown"} outputTokens=${tokenUsage?.outputTokens ?? "unknown"} totalTokens=${tokenUsage?.totalTokens ?? "unknown"} sources=${evidence.sources.length} cached=${result.cached} grounding=passed unavailableMetrics=${unavailableMetrics} httpStatus=${diagnostic?.httpStatus ?? "none"} clientRequestId=${diagnostic?.clientRequestId ?? "none"} openaiRequestId=${diagnostic?.openaiRequestId ?? "none"}`);
   }
   console.log(`AI live smoke passed for ${tickers.length} tickers; exactly ${tickers.length} bounded requests were attempted.`);
 }
 
 main().catch((error: unknown) => {
-  console.error(`AI live smoke failed: ${error instanceof Error ? error.message : "unexpected error"}`);
+  console.error(`AI live smoke failed: ${safeErrorFields(error)}`);
   process.exitCode = 1;
 });

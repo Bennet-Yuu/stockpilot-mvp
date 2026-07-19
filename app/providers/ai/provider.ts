@@ -1,6 +1,6 @@
 import { getAiRuntimeConfig, isAiConfigured, requestOpenAiResearch } from "./client";
 import { getAiCache, makeAiCacheKey } from "./cache";
-import { AiProviderError, setLastAiDiagnosticCode } from "./errors";
+import { AiProviderError, setLastAiDiagnosticCode, toSafeAiError } from "./errors";
 import { assertGroundedResearchBrief } from "./grounding";
 import { aiPromptVersion, type ResearchBrief } from "./schemas";
 import type { ResearchAssistantInput, ResearchAssistantProvider, ResearchAssistantResult } from "./types";
@@ -66,9 +66,9 @@ export class OpenAIResearchAssistantProvider implements ResearchAssistantProvide
       const brief = assertGroundedResearchBrief(candidate, input.evidence, input.language);
       cache.set(key, brief, config.cacheTtlSeconds);
       setLastAiDiagnosticCode(undefined);
-      return { status: "success", aiMode: "ai-live", cached: false, brief, warnings: input.evidence.sourceMode === "stale-cache" ? ["SEC evidence is from a stale cache; verify the source dates before relying on this brief."] : [], latencyMs: Math.max(0, this.now() - started), tokenUsage: generated.tokenUsage };
+      return { status: "success", aiMode: "ai-live", cached: false, brief, warnings: input.evidence.sourceMode === "stale-cache" ? ["SEC evidence is from a stale cache; verify the source dates before relying on this brief."] : [], latencyMs: Math.max(0, this.now() - started), tokenUsage: generated.tokenUsage, diagnostic: generated.diagnostic };
     } catch (error) {
-      const safe = error instanceof AiProviderError ? error : new AiProviderError("AI_PROVIDER_ERROR", "The AI provider is unavailable.");
+      const safe = error instanceof AiProviderError ? error : toSafeAiError(error);
       setLastAiDiagnosticCode(safe.code);
       throw safe;
     }

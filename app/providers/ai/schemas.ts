@@ -138,6 +138,14 @@ export const researchResponseSchema = z.object({
   sources: z.array(researchSourceSchema),
   warnings: z.array(z.string()),
   diagnosticCode: z.string().optional(),
+  diagnostic: z.object({
+    clientRequestId: z.string().max(120).optional(),
+    openaiRequestId: z.string().max(120).optional(),
+    errorClass: z.string().max(120).optional(),
+    httpStatus: z.number().int().min(100).max(599).optional(),
+    apiCode: z.string().max(120).optional(),
+    apiType: z.string().max(120).optional(),
+  }).strict().optional(),
 }).strict();
 
 export type ResearchResponse = z.infer<typeof researchResponseSchema>;

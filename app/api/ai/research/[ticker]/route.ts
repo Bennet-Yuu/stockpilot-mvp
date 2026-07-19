@@ -4,7 +4,7 @@ import { getSecFilingDataProvider } from "../../../../providers/sec/provider";
 import type { SecCompanyFinancialSnapshot } from "../../../../providers/sec/types";
 import { getAiRuntimeConfig } from "../../../../providers/ai/client";
 import { buildResearchEvidenceBundle } from "../../../../providers/ai/evidence";
-import { AiProviderError, setLastAiDiagnosticCode } from "../../../../providers/ai/errors";
+import { AiProviderError, setLastAiDiagnosticCode, toSafeAiError } from "../../../../providers/ai/errors";
 import { containsRefusalRequest } from "../../../../providers/ai/grounding";
 import { aiPromptVersion, researchRequestSchema, researchResponseSchema, type ResearchResponse } from "../../../../providers/ai/schemas";
 import { getResearchAssistantProvider } from "../../../../providers/ai/provider";
@@ -32,10 +32,11 @@ async function readRequestBody(request: Request): Promise<unknown> {
 }
 
 function errorResponse(ticker: string, sourceMode: ResearchResponse["sourceMode"], error: AiProviderError, sources: ResearchResponse["sources"] = [], warnings: string[] = []): NextResponse {
+  setLastAiDiagnosticCode(error.code);
   const status = error.code === "AI_RATE_LIMITED" ? 429 : error.code === "AI_INVALID_REQUEST" ? 400 : error.code === "AI_REFUSED" ? 422 : error.code === "AI_GROUNDING_ERROR" || error.code === "AI_SCHEMA_ERROR" ? 502 : 503;
   const retryAfter = error.code === "AI_RATE_LIMITED" ? String(Math.max(1, Number(error.cause) || 60)) : undefined;
   const aiMode = error.code === "AI_NOT_CONFIGURED" || error.code === "AI_SEC_UNAVAILABLE" ? "not-configured" : "ai-live";
-  return json({ ticker, status: error.code === "AI_RATE_LIMITED" ? "rate-limited" : error.code === "AI_REFUSED" ? "refused" : error.code === "AI_GROUNDING_ERROR" ? "grounding-error" : error.code === "AI_SCHEMA_ERROR" ? "schema-error" : error.code === "AI_NOT_CONFIGURED" ? "not-configured" : error.code === "AI_SEC_UNAVAILABLE" ? "sec-unavailable" : "provider-error", sourceMode, aiMode, cached: false, promptVersion: aiPromptVersion, sources, warnings: [...warnings, error.code === "AI_GROUNDING_ERROR" ? "AI output did not pass source grounding validation." : error.code === "AI_REFUSED" ? "The request is outside StockPilot's research-only boundaries." : error.code === "AI_SEC_UNAVAILABLE" ? "SEC sample or unavailable data was not sent to AI." : "AI Research Assistant is temporarily unavailable."], diagnosticCode: error.code }, status, retryAfter ? { "Retry-After": retryAfter } : {});
+  return json({ ticker, status: error.code === "AI_RATE_LIMITED" ? "rate-limited" : error.code === "AI_REFUSED" ? "refused" : error.code === "AI_GROUNDING_ERROR" ? "grounding-error" : error.code === "AI_SCHEMA_ERROR" ? "schema-error" : error.code === "AI_NOT_CONFIGURED" ? "not-configured" : error.code === "AI_SEC_UNAVAILABLE" ? "sec-unavailable" : "provider-error", sourceMode, aiMode, cached: false, promptVersion: aiPromptVersion, sources, warnings: [...warnings, error.code === "AI_GROUNDING_ERROR" ? "AI output did not pass source grounding validation." : error.code === "AI_REFUSED" ? "The request is outside StockPilot's research-only boundaries." : error.code === "AI_SEC_UNAVAILABLE" ? "SEC sample or unavailable data was not sent to AI." : "AI Research Assistant is temporarily unavailable."], diagnosticCode: error.code, diagnostic: error.diagnostic }, status, retryAfter ? { "Retry-After": retryAfter } : {});
 }
 
 export async function createAiResearchResponse(request: Request, rawTicker: unknown, provider?: ResearchAssistantProvider): Promise<NextResponse> {
@@ -74,7 +75,7 @@ export async function createAiResearchResponse(request: Request, rawTicker: unkn
     const status: ResearchResponse["status"] = result.status === "cached" ? "cached" : "success";
     return json({ ticker, status, sourceMode: snapshot.sourceMode, aiMode: result.aiMode, generatedAt: result.brief.generatedAt, cached: result.cached, promptVersion: result.brief.promptVersion, brief: result.brief, sources: evidence.sources, warnings: [...snapshot.warnings, ...result.warnings], diagnosticCode: undefined });
   } catch (error) {
-    const safe = error instanceof AiProviderError ? error : new AiProviderError("AI_PROVIDER_ERROR", "AI provider unavailable.");
+    const safe = error instanceof AiProviderError ? error : toSafeAiError(error);
     return errorResponse(ticker, snapshot.sourceMode, safe, evidence.sources, snapshot.warnings);
   }
 }

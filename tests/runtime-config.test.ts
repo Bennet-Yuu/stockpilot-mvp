@@ -51,6 +51,30 @@ test("Node runtime continues reading process.env after the test adapter is clear
   }
 });
 
+test("Node runtime reads the allowlisted AI fields without exposing unrelated environment values", () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  const previousModel = process.env.OPENAI_MODEL;
+  const previousUnrelated = process.env.UNRELATED_STOCKPILOT_SECRET;
+  try {
+    clearServerRuntimeConfigForTests();
+    process.env.OPENAI_API_KEY = "sk-test-only";
+    process.env.OPENAI_MODEL = "gpt-test";
+    process.env.UNRELATED_STOCKPILOT_SECRET = "must-not-be-copied";
+    const config = getServerRuntimeConfig();
+    assert.equal(config.OPENAI_API_KEY, "sk-test-only");
+    assert.equal(config.OPENAI_MODEL, "gpt-test");
+    assert.equal("UNRELATED_STOCKPILOT_SECRET" in config, false);
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.OPENAI_MODEL;
+    else process.env.OPENAI_MODEL = previousModel;
+    if (previousUnrelated === undefined) delete process.env.UNRELATED_STOCKPILOT_SECRET;
+    else process.env.UNRELATED_STOCKPILOT_SECRET = previousUnrelated;
+    clearServerRuntimeConfigForTests();
+  }
+});
+
 test("a provider imported before Worker injection still uses request-time configuration", async () => {
   clearServerRuntimeConfigForTests();
   const beforeInjection = createSecProvider({ cache: new MemorySecCache() });

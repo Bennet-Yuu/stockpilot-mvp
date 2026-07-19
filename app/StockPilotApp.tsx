@@ -13,6 +13,7 @@ import type { AccountLedger, ChecklistInput as Checklist, JournalRecord, TradeRe
 import { checklistWarningText, type Locale, readLocalePreference, t, translateDom, writeLocalePreference } from "./i18n";
 import { marketDataProvider } from "./providers/marketData";
 import SecSnapshotPanel from "./components/SecSnapshotPanel";
+import AiResearchAssistantPanel from "./components/AiResearchAssistantPanel";
 import { getBrowserStorage, migrateV1ToV2, readThemePreference, readUserData, writeThemePreference, writeUserData } from "./storage/userData";
 
 type View = "dashboard" | "stock" | "watchlist" | "checklist" | "portfolio" | "journal" | "insights";
@@ -118,7 +119,7 @@ export default function StockPilotApp({ initialView = "dashboard", initialTicker
       <div className="demo-banner"><span>●</span><strong>Demo mode</strong> — Prices, analysis, and transactions use sample data. Nothing here involves real money.</div>
       <div className="page-wrap">
         {view==="dashboard"&&<Dashboard locale={locale} portfolioValue={portfolioValue} pnl={pnl} activeTrades={activeTrades} watchlist={watchlist} drafts={checklistDrafts} trades={trades} journals={journals} openStock={openStock} navigate={navigate}/>}
-        {view==="stock"&&<StockDetail stock={stocks[ticker]} researchTab={researchTab} setResearchTab={setResearchTab} watchlist={watchlist} setWatchlist={setWatchlist} navigate={navigate} notify={setToast}/>}
+        {view==="stock"&&<StockDetail stock={stocks[ticker]} locale={locale} researchTab={researchTab} setResearchTab={setResearchTab} watchlist={watchlist} setWatchlist={setWatchlist} navigate={navigate} notify={setToast}/>}
         {view==="watchlist"&&<Watchlist items={watchlist} setItems={setWatchlist} openStock={openStock}/>}
         {view==="checklist"&&<BuyChecklist locale={locale} ticker={ticker} setTicker={setTicker} drafts={checklistDrafts} setDrafts={setChecklistDrafts} trades={trades} setTrades={setTrades} account={account} setAccount={setAccount} portfolioValue={portfolioValue} navigate={navigate} notify={setToast}/>}
         {view==="portfolio"&&<Portfolio trades={trades} setTrades={setTrades} account={account} setAccount={setAccount} portfolioValue={portfolioValue} navigate={navigate} notify={setToast}/>}
@@ -154,7 +155,7 @@ function Dashboard({locale,portfolioValue,pnl,activeTrades,watchlist,drafts,trad
 function Metric({label,value,delta}:{label:string;value:React.ReactNode;delta:string}){return <section className="metric card"><p>{label}</p><h2>{value}</h2><small>{delta}</small></section>}
 function TickerCell({ticker}:{ticker:Ticker}){return <div className="ticker-cell"><span>{ticker.slice(0,1)}</span><div><b>{ticker}</b><small>{stocks[ticker].name}</small></div></div>}
 
-function StockDetail({stock,researchTab,setResearchTab,watchlist,setWatchlist,navigate,notify}:{stock:Stock;researchTab:"snapshot"|"report";setResearchTab:(v:"snapshot"|"report")=>void;watchlist:WatchItem[];setWatchlist:React.Dispatch<React.SetStateAction<WatchItem[]>>;navigate:(v:View)=>void;notify:(s:string)=>void}){
+function StockDetail({stock,locale,researchTab,setResearchTab,watchlist,setWatchlist,navigate,notify}:{stock:Stock;locale:Locale;researchTab:"snapshot"|"report";setResearchTab:(v:"snapshot"|"report")=>void;watchlist:WatchItem[];setWatchlist:React.Dispatch<React.SetStateAction<WatchItem[]>>;navigate:(v:View)=>void;notify:(s:string)=>void}){
   const profile=calculateResearchProfile(stock); const watched=watchlist.some(w=>w.ticker===stock.ticker);
   const investorRelations:Record<Ticker,string>={AAPL:"https://investor.apple.com/",MSFT:"https://www.microsoft.com/en-us/Investor",NVDA:"https://investor.nvidia.com/",AMZN:"https://ir.aboutamazon.com/",TSLA:"https://ir.tesla.com/"};
   const add=()=>{if(!watched)setWatchlist(items=>[...items,{ticker:stock.ticker,target:Math.round(stock.price*.92),reason:"Research the business and wait for a better entry.",status:"Researching"}]);notify(watched?"Already on your watchlist":"Added to watchlist")};
@@ -166,6 +167,7 @@ function StockDetail({stock,researchTab,setResearchTab,watchlist,setWatchlist,na
       <div className="two-col stock-grid"><section className="card"><div className="section-head"><div><p className="eyebrow">12-MONTH SAMPLE</p><h2>Price trend</h2></div><Badge tone="fact">Delayed demo</Badge></div><PriceTrendChart stock={stock}/></section><section className="card company-about"><p className="eyebrow">BUSINESS OVERVIEW</p><h2>What the company does</h2><p>{stock.description}</p><button className="text-button" onClick={()=>setResearchTab("report")}>Read full structured report →</button></section></div>
       <section className="card"><div className="section-head"><div><p className="eyebrow">FUNDAMENTALS</p><h2>Key metrics</h2></div><Badge tone="fact">Sample provider facts</Badge></div><div className="fundamentals">{[["Market cap",stock.marketCap],["P/E",stock.pe],["Forward P/E",stock.forwardPe],["Revenue growth",stock.growth],["Net margin",stock.margin],["Free cash flow",stock.fcf],["52-week high",`$${stock.high}`],["52-week low",`$${stock.low}`]].map(([k,v])=><div key={k}><small>{k}</small><b>{v}</b></div>)}</div><div className="source-links"><div><Badge tone="fact">Original sources</Badge><p>Use primary documents to verify all demo facts before making a real-world decision.</p></div><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noreferrer">SEC EDGAR ↗</a><a href={investorRelations[stock.ticker]} target="_blank" rel="noreferrer">Company investor relations ↗</a></div></section>
       <SecSnapshotPanel ticker={stock.ticker}/>
+      <AiResearchAssistantPanel ticker={stock.ticker} locale={locale}/>
     </>:<ResearchReport stock={stock}/>} 
   </>;
 }

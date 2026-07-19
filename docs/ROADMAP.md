@@ -18,16 +18,32 @@
 - [x] Memory TTL/stale cache、sample fallback、rate-limited/unavailable/not-configured 状态。
 - [x] 独立 SEC Snapshot panel、最近 filings、年度文字表、as-of/source links 和移动端 overflow。
 - [x] 离线 fixture、transport 注入测试和 0.2 全量回归。
-- [ ] 由部署环境提供真实、可负责的 SEC 联系 User-Agent 后再做 live smoke test（本仓库不提交该值）。
+- [x] 0.3 SEC live smoke 已由部署环境完成；真实 User-Agent 仍不提交到本仓库。
 
-## 0.4 — 明确排除在本版本之外的研究助手
+## 0.4 — Source-Grounded AI Research Assistant（进行中）
 
-若未来引入 LLM，只能总结已提供且带来源的材料，不能计算账本、改变风控、生成 Strong Buy/Sell、预测价格或补造事实。0.3 不调用 OpenAI，也不需要 API key。
+本版本只提供用户主动触发、只读 SEC 证据的结构化研究简报；不计算账本、不改变风控、不生成 Strong Buy/Sell、不预测价格、不补造事实。
 
-## 0.5 — 可选账户同步
+## 0.5 — 可选账户同步（未开始）
 
-可选注册、云端同步、冲突检测和导入导出仍不在 0.3；任何后续版本仍不得扩展到真实交易或自动下单。
+可选注册、云端同步、冲突检测和导入导出仍不在 0.4；任何后续版本仍不得扩展到真实交易或自动下单。
 
 ## 发布门槛
 
 每个版本必须通过 TypeScript strict、lint、unit/render tests、production build 和 audit；外部数据必须有官方来源、as-of、可追溯链接、失败 fallback 和无密钥 Demo 路径。
+
+## 0.4 当前状态（进行中）
+
+- [x] 受控的用户主动触发 AI Research Assistant。
+- [x] SEC-only Evidence Bundle、deterministic trends 和唯一 sourceId。
+- [x] Responses API Structured Outputs、Zod schema 和 grounding validator。
+- [x] 无 API key fallback、服务端 cache、rate limit 和 Worker request-time config。
+- [x] 中英文、浅色/深色、键盘/屏幕阅读器状态和移动端 AI panel。
+- [ ] 配置真实 OpenAI secret 后执行显式 `pnpm test:ai-live`（不进入普通 CI）。
+- [ ] 完成本地回归、分支推送和 Draft PR review。
+
+0.3 的 SEC live smoke 已在发布基线完成；本版本不再把它标记为 pending。0.4 仍不接入交易、实时行情、新闻、Supabase 或账户同步。
+
+## 0.5（未开始）
+
+可选账户同步、云端数据和冲突检测仍不在 0.4 范围内。
